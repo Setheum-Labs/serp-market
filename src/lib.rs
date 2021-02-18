@@ -13,7 +13,7 @@ use core::cmp::{max, min, Ord, Ordering};
 use fixed::{types::extra::U64, FixedU128};
 use frame_support::pallet_prelude::*;
 use num_rational::Ratio;
-use orml_traits::BasicCurrency;
+use serml_traits::*;
 use sp_runtime::{
 	traits::{CheckedMul, Zero},
 	PerThing, Perbill, RuntimeDebug,
