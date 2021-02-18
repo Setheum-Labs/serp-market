@@ -20,7 +20,7 @@ use sp_runtime::{
 };
 use sp_std::collections::vec_
 deque::VecDeque;
-use frame_system::{ensure_signed, pallet_prelude::*};
+use system::{ensure_signed, pallet_prelude::*};
 
 #[cfg(test)]
 mod tests;
