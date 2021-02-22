@@ -201,8 +201,6 @@ pub fn add_dinar(dinar: DinarT) {
 
 ///-----------------------------------------------------------------------------------
 
-
-
 pub struct ExtBuilder {
 	endowed_accounts: Vec<(AccountId, CurrencyId, Balance)>,
 }
