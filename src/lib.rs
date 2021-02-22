@@ -26,9 +26,9 @@ use frame_system::{self as system, ensure_signed, pallet_prelude::*};
 mod tests;
 
 /// Expected price oracle interface. `fetch_price` must return the amount of SettCurrency exchanged for the tracked value.
-pub trait FetchPrice<Balance> {
+pub trait FetchPrice<CurrencyId> {
 	/// Fetch the current price.
-	fn fetch_price() -> Balance;
+	fn fetch_price() -> CurrencyId;
 }
 
 /// The pallet's configuration trait.
