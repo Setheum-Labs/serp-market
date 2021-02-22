@@ -23,7 +23,6 @@ use orml_traits::{
 	MultiLockableCurrency as LockableSettCurrency, MultiReservableCurrency as ReservableSettCurrency,
 };
 
-use orml_utilities::with_transaction_result;
 use sp_runtime::{
 	traits::{CheckedMul, Zero},
 	PerThing, Perbill, RuntimeDebug,
