@@ -14,7 +14,16 @@ use core::cmp::{max, min, Ord, Ordering};
 use fixed::{types::extra::U64, FixedU128};
 use frame_support::pallet_prelude::*;
 use num_rational::Ratio;
-use serml_traits::*;
+
+use orml_traits::{
+	account::MergeAccount,
+	arithmetic::{Signed, SimpleArithmetic},
+	BalanceStatus, BasicCurrency, BasicCurrencyExtended, BasicLockableCurrency, BasicReservableCurrency,
+	LockIdentifier, MultiCurrency as SettCurrency, MultiCurrencyExtended as ExtendedSettCurrency, 
+	MultiLockableCurrency as LockableSettCurrency, MultiReservableCurrency as ReservableSettCurrency,
+};
+
+use orml_utilities::with_transaction_result;
 use sp_runtime::{
 	traits::{CheckedMul, Zero},
 	PerThing, Perbill, RuntimeDebug,
