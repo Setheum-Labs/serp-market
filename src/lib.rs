@@ -4,6 +4,7 @@
 //!to make bids for Nativecurrency in this case called Dinar, and Sett-Currencies(Multiple stablecoins).
 //!Dutch Auction for Bids on stability of the Stablecoins.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::unused_unit)]
 
 use sp_std::prelude::*;
 
