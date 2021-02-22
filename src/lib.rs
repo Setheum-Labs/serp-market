@@ -14,16 +14,14 @@ use core::cmp::{max, min, Ord, Ordering};
 use fixed::{types::extra::U64, FixedU128};
 use frame_support::pallet_prelude::*;
 use num_rational::Ratio;
-
-use orml_traits::{
+use stp258::{
 	account::MergeAccount,
 	arithmetic::{Signed, SimpleArithmetic},
 	BalanceStatus, BasicCurrency, BasicCurrencyExtended, BasicLockableCurrency, BasicReservableCurrency,
-	LockIdentifier, MultiCurrency as SettCurrency, MultiCurrencyExtended as ExtendedSettCurrency, 
-	MultiLockableCurrency as LockableSettCurrency, MultiReservableCurrency as ReservableSettCurrency,
-};
-
-use sp_runtime::{
+	LockIdentifier, SettCurrency, ExtendedSettCurrency, 
+	LockableSettCurrency, R
+eservableSettCurrency,
+};use sp_runtime::{
 	traits::{CheckedMul, Zero},
 	PerThing, Perbill, RuntimeDebug,
 };
