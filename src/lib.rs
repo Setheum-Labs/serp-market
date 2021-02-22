@@ -4,6 +4,7 @@
 //!to make bids for Nativecurrency in this case called Dinar, and Sett-Currencies(Multiple stablecoins).
 //!Dutch Auction for Bids on stability of the Stablecoins.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::unused_unit)]
 
 use sp_std::prelude::*;
 
@@ -13,8 +14,14 @@ use core::cmp::{max, min, Ord, Ordering};
 use fixed::{types::extra::U64, FixedU128};
 use frame_support::pallet_prelude::*;
 use num_rational::Ratio;
-use serml_traits::*;
-use sp_runtime::{
+use stp258::{
+	account::MergeAccount,
+	arithmetic::{Signed, SimpleArithmetic},
+	BalanceStatus, BasicCurrency, BasicCurrencyExtended, BasicLockableCurrency, BasicReservableCurrency,
+	LockIdentifier, SettCurrency, ExtendedSettCurrency, 
+	LockableSettCurrency, R
+eservableSettCurrency,
+};use sp_runtime::{
 	traits::{CheckedMul, Zero},
 	PerThing, Perbill, RuntimeDebug,
 };
@@ -26,9 +33,9 @@ use frame_system::{self as system, ensure_signed, pallet_prelude::*};
 mod tests;
 
 /// Expected price oracle interface. `fetch_price` must return the amount of SettCurrency exchanged for the tracked value.
-pub trait FetchPrice<Balance> {
+pub trait FetchPrice<CurrencyId> {
 	/// Fetch the current price.
-	fn fetch_price() -> Balance;
+	fn fetch_price() -> CurrencyId;
 }
 
 /// The pallet's configuration trait.
