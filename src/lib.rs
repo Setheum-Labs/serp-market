@@ -203,4 +203,15 @@ where
         let serp_quote = market_price.checked_add(Perbill::from_percent(&mint_rate * 2)); // serping_price of the currency.
         serp_quote.checked_add(Perbill::from_percent(&mint_rate * 2)); 
 	}
+
+	/// Provide relative `serping_price` for two currencies
+    /// with additional `serp_quote`.
+	fn get_serpdown_price(base_currency_id: CurrencyId, quote_currency_id: CurrencyId) -> Option<Price> {
+		let base_price = Source::get(&base_currency_id)?; // base currency price compared to currency (native currency could work best)
+		let quote_price = Source::get(&quote_currency_id)?;
+        let market_price = base_price.checked_div(&quote_price); // market_price of the currency.
+        let mint_rate = Perbill::from_percent(); // supply change of the currency.
+        let serp_quote = market_price.checked_add(Perbill::from_percent(&mint_rate * 2)); // serping_price of the currency.
+        serp_quote.checked_add(Perbill::from_percent(&mint_rate * 2)); 
+	}
 }
