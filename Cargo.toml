@@ -1,29 +1,34 @@
 [package]
 authors = ['Setheum Labs<https://github.com/Setheum-Labs>']
-description = 'serp-market pallet template'
+description = 'Setheum Elastic Reserve Protocol (SERP) Market Pallet'
 edition = '2018'
 homepage = 'https://setheum.xyz'
 license = 'Apache-2.0 License'
 name = 'serp-market'
 repository = 'https://github.com/Setheum-Labs/Setheum/'
-version = '0.4.3-dev'
+version = '0.5.5-dev'
 
 [dependencies]
-adapters = { default-features = false, package = 'storage-adapters', version = '0.4.1', git = 'https://github.com/Setheum-Labs/storage-adapters' }
-fetch-price = { default-features = false, package = 'fetch-price', version = '0.4.1', git = 'https://github.com/Setheum-Labs/fetch-price' }
-stp258 = { default-features = false, package = 'stp258', version = '0.4.1', git = 'https://github.com/Setheum-Labs/stp258' }
 serde = { version = "1.0.123", optional = true }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false }
+sp-io = { version = "3.0.0", default-features = false }
+sp-std = { default-features = false, optional = true, version = '3.0.0' }
+
 frame-support = { default-features = false, version = '3.0.0' }
 frame-system = { default-features = false, version = '3.0.0' }
-sp-std = { default-features = false, optional = true, version = '3.0.0' }
-num-rational = { default-features = false, version = '0.3.2' }
+
+stp258-traits = { version = "0.5.0-dev", default-features = false, git = "https://github.com/Setheum-Labs/stp258-traits" }
+num-rational = { default-features = false, version = '0.4.0' }
 fixed = { default-features = false, version = '1.6.0' }
+
+funty = { version = "=1.1.0", default-features = false } # https://github.com/bitvecto-rs/bitvec/issues/105
 
 [dev-dependencies]
 sp-core = '3.0.0'
-sp-io = '3.0.0'
 sp-runtime = { default-features = false, version = '3.0.0' }
+pallet-balances = "3.0.0"
+stp258-tokens = { default-features = false, version = "0.5.0-dev", git = "https://github.com/Setheum-Labs/stp258-tokens"}
+stp258 = { default-features = false, version = "0.5.0-dev", git = 'https://github.com/Setheum-Labs/stp258' }
 
 [features]
 default = ['std']
@@ -37,6 +42,7 @@ std = [
     "num-rational/std",
 	"serde/std",
     "stp258/std",
+    "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",
 ]
