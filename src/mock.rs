@@ -9,7 +9,7 @@ use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{AccountIdConversion, IdentityLookup},
-	AccountId32, ModuleId,
+	AccountId32, ModuleId, FixedPointNumber, FixedU128
 };
 
 use crate as serp_market;
@@ -46,6 +46,7 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
+type Price = FixedU128;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
@@ -101,6 +102,26 @@ pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
 
+impl serp_market::Config for Runtime {
+	type Event = Event;
+	type Market = Merket;
+	type MarketPriceProvider = MarketPriceProvider;
+	type Price = Price;
+	type CurrencyId = CurrencyId;
+}
+pub type MarketPriceProvider = SerpMarketPriceProvider<Runtime, u32>;
+
+impl DataProvider::Config for Runtime {
+	fn get(currency: &u32) -> Option<Price> {
+		match currency {
+			0 => Some(Price::from_inner(0)),
+			1 => Some(Price::from_inner(1)),
+			2 => Some(Price::from_inner(2)),
+			_ => None,
+		}
+	}
+}
+
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -108,6 +129,7 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
+		SerpMarket: serp_market::{Module, Call, Event<T>},
 		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
