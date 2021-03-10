@@ -64,8 +64,12 @@ pub mod module {
 			+ Stp258AssetLockable<Self::AccountId, Balance = BalanceOf<Self>>
 			+ Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
 
+		type SettPayAccountId: AccountId;
+		type SettPaySerpAmount: Balance;
+
 		#[pallet::constant]
 		type GetStp258NativeId: Get<CurrencyIdOf<Self>>;
+		
 	}
 
 	#[pallet::error]
@@ -99,52 +103,46 @@ pub mod module {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		#[pallet::weight(<T::Balance as Into<Weight>>::into(new_value.clone()))]
-		pub fn set_dummy(origin: OriginFor<T>, #[pallet::compact] new_value: T::Balance) -> DispatchResultWithPostInfo {
-			ensure_root(origin)?;
+		// Serp to SettPay
+		fn deposit_serp_to_settpay(
+			currency_id: Self::CurrencyId, 
+			sett_pay_account_id: &T::SettPayAccountId,
+			#[pallet::compact] amount: &T::SettPaySerpAmount,
+		) -> DispatchResult {
+			let SettPaySerpAmount = Perbil;
+			if amount.is_zero() {
+				return Ok(());
+			}
+			if currency_id == T::GetStp258NativeId::get() {
+				debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
+				return Err(http::Error::Unknown);
+			} else {
+				T::Stp258Currency::deposit(currency_id, who, amount)?;
+			}
+			Self::deposit_event(Event::Deposited(currency_id, who.clone(), amount));
+			Ok(())
+		}
 
-			Dummy::<T>::put(&new_value);
-			Self::deposit_event(Event::Dummy(new_value));
-
-			Ok(().into())
-		}]
-
-		// TODO: REPLACE WITH `serp_up_supply`.
-		/// Transfer some balance to another account under `currency_id`.
-		///
-		/// The dispatch origin for this call must be `Signed` by the
-		/// transactor.
-		#[pallet::weight(T::WeightInfo::transfer_non_native_currency())]
-		pub fn transfer(
-			origin: OriginFor<T>,
-			dest: <T::Lookup as StaticLookup>::Source,
+		fn trade_serpup(
 			currency_id: CurrencyIdOf<T>,
+			to: &T::AccountId
 			#[pallet::compact] amount: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
-			let from = ensure_signed(origin)?;
-			let to = T::Lookup::lookup(dest)?;
+			let to = T::SettPayAccountId;
 			<Self as Stp258Currency<T::AccountId>>::transfer(currency_id, &from, &to, amount)?;
 			Ok(().into())
 		}
 
-		// TODO: REPLACE WITH `serp_down_supply`.
-		/// Transfer some native currency to another account.
-		///
-		/// The dispatch origin for this call must be `Signed` by the
-		/// transactor.
-		#[pallet::weight(T::WeightInfo::transfer_native_currency())]
-		pub fn transfer_native_currency(
-			origin: OriginFor<T>,
-			dest: <T::Lookup as StaticLookup>::Source,
+		fn trade_serpdown(
+			currency_id: CurrencyIdOf<T>,
+			to: &T::AccountId
 			#[pallet::compact] amount: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
-			let from = ensure_signed(origin)?;
-			let to = T::Lookup::lookup(dest)?;
-			T::Stp258Native::transfer(&from, &to, amount)?;
-
-			Self::deposit_event(Event::Transferred(T::GetStp258NativeId::get(), from, to, amount));
+			let to = T::SettPayAccountId;
+			<Self as Stp258Currency<T::AccountId>>::transfer(currency_id, &from, &to, amount)?;
 			Ok(().into())
 		}
+	}
 }
 
 impl<T: Config> Market<T::CurrencyId, T::Price> for Pallet<T> {
@@ -158,11 +156,51 @@ impl<T: Config> Market<T::CurrencyId, T::Price> for Pallet<T> {
 	/// `new_supply`.
 	fn on_expand_supply(
 		currency_id: CurrencyId,
-		amount: Balance,
+		expand_amount: Balance,
 		serpup_to: AccountId, AccountId,
 		serpup_from: AccountId,
 		new_supply: Balance,
-	) -> DispatchResult;
+		total_issuance: TotalIssuance,
+	) -> DispatchResult{
+		if currency_id == T::GetNativeCurrencyId::get() {
+			debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
+			return Err(http::Error::Unknown);
+		} else {
+			T::SettCurrency::expand_supply(currency_id, expand_amount)?;
+		}
+		// Checking whether the supply will overflow.
+		total_issuance
+			.checked_add(currency_id, expand_amount)
+			.ok_or(Error::<T>::SupplyOverflow)?;
+		let 
+		let new_supply = total_issuance + expand_amount;
+		native::info!("expanded supply by minting {} {} sett currency", currency_id, expand_amount);
+		<SettCurrencySupply>::put(new_supply);
+		Self::deposit_event(RawEvent::ExpandedSupply(currency_id, expand_amount));
+		let        
+		Ok(())
+	}
+
+	fn deposit(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
+		if amount.is_zero() {
+			return Ok(());
+		}
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::deposit(who, amount)?;
+		} else {
+			T::Stp258Currency::deposit(currency_id, who, amount)?;
+		}
+		Self::deposit_event(Event::Deposited(currency_id, who.clone(), amount));
+		Ok(())
+	}
+
+	fn slash(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> Self::Balance {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::slash(who, amount)
+		} else {
+			T::Stp258Currency::slash(currency_id, who, amount)
+		}
+	}
 
 	/// Called when `contract_supply` is received from the SERP.
 	/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
@@ -170,11 +208,32 @@ impl<T: Config> Market<T::CurrencyId, T::Price> for Pallet<T> {
 	/// and update `new_supply`.
 	fn on_contract_supply(
 		currency_id: CurrencyId,
-		amount: Balance,
+		contract_amount: Balance,
 		serpdown_to: AccountId,
 		serpdown_from: AccountId,
 		new_supply: Balance,
 	) -> DispatchResult;
+
+	fn deposit(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
+		if amount.is_zero() {
+			return Ok(());
+		}
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::deposit(who, amount)?;
+		} else {
+			T::Stp258Currency::deposit(currency_id, who, amount)?;
+		}
+		Self::deposit_event(Event::Deposited(currency_id, who.clone(), amount));
+		Ok(())
+	}
+
+	fn slash(currency_id: Self::CurrencyId, who: &T::AccountId, amount: Self::Balance) -> Self::Balance {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::slash(who, amount)
+		} else {
+			T::Stp258Currency::slash(currency_id, who, amount)
+		}
+	}
 }
 
 /// A `PriceProvider` implementation based on price data from a `DataProvider`.
