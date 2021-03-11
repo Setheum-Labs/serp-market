@@ -1,5 +1,5 @@
 [package]
-authors = ['Setheum Labs<https://github.com/Setheum-Labs>']
+authors = ['Setheum Labs<https://github.com/Setheum-Labs
 description = 'Setheum Elastic Reserve Protocol (SERP) Market Pallet'
 edition = '2018'
 homepage = 'https://setheum.xyz'
@@ -42,8 +42,8 @@ std = [
     'frame-support/std',
     'frame-system/std',
     "num-rational/std",
-	"num-traits/std",
-	"serde/std",
+	  "num-traits/std",
+	  "serde/std",
     "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",
