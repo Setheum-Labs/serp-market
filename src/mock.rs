@@ -106,13 +106,38 @@ pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
 
-impl serp_market::Config for Runtime {
-	type Event = Event;
-	type Market = Merket;
+
+const ELAST_ADJUSTMENT_FREQUENCY: Blocknumber = 10;
+
+parameter_types! {
+	pub const ElastAdjustmentFrequency: Blocknumber =  ELAST_ADJUSTMENT_FREQUENCY;
 }
+
+impl SerpTes for Runtime {
+	type Event = Event;
+	type Currency = Stp258Currency;
+	type SerpMarket = SerpMarket;
+	type ElastAdjustmentFrequency = ElastAdjustmentFrequency;
+	type WeightInfo = ();
+}
+
+parameter_types! {
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
+}
+
+impl Config for Runtime {
+	type Event = Event;
+	type GetNativeAssetId: GetNativeAssetId;
+	type SettCurrency = Stp258Currency;
+	type Market = Market;
+	type GetSettPayAcc = GetSettPayAcc;
+	type NativeAsset: Stp258Asset<Self::AccountId>;
+}
+
 pub type MarketPriceProvider = SerpMarketPriceProvider<Runtime, u32>;
 
-impl DataProvider::Config for Runtime {
+impl SerpMarketProvider::Config for Runtime {
 	fn get(currency: &u32) -> Option<Price> {
 		match currency {
 			0 => Some(Price::from_inner(0)),
@@ -140,7 +165,7 @@ construct_runtime!(
 
 pub const ALICE: AccountId = AccountId32::new([1u8; 32]);
 pub const BOB: AccountId = AccountId32::new([2u8; 32]);
-pub const EVA: AccountId = AccountId32::new([5u8; 32]);
+pub const SETT_PAY_ACC: AccountId = AccountId32::new([5u8; 32]);
 pub const ID_1: LockIdentifier = *b"1       ";
 
 pub struct ExtBuilder {
@@ -165,8 +190,15 @@ impl ExtBuilder {
 		self.balances(vec![
 			(ALICE, STP258_NATIVE_ID, 100),
 			(BOB, STP258_NATIVE_ID, 100),
-			(ALICE, STP258_TOKEN_ID, 100),
-			(BOB, STP258_TOKEN_ID, 100),
+			(ALICE, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
+			(BOB, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
+		])
+	}
+
+	pub fn one_hundred_for_sett_pay(self) -> Self {
+		self.balances(vec![
+			(SETT_PAY_ACC, STP258_NATIVE_ID, 100),
+			(SETT_PAY_ACC, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
 		])
 	}
 
