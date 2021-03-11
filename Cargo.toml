@@ -18,9 +18,6 @@ frame-support = { default-features = false, version = '3.0.0' }
 frame-system = { default-features = false, version = '3.0.0' }
 
 #setheum-deps 
-serp-tes = { default-features = false, version = "0.5.0-dev", git = "https://github.com/Setheum-Labs/serp-tes", branch = "general-stable-currencies"}
-stp258-currencies = { default-features = false, version = "0.5.0-dev", git = 'https://github.com/Setheum-Labs/stp258' }
-stp258-tokens = { default-features = false, version = "0.5.0-dev", git = "https://github.com/Setheum-Labs/stp258-tokens"}
 stp258-traits = { default-features = false, version = "0.5.0-dev",  git = "https://github.com/Setheum-Labs/stp258-traits" }
 
 funty = { version = "=1.1.0", default-features = false } # https://github.com/bitvecto-rs/bitvec/issues/105
@@ -33,6 +30,10 @@ fixed = { default-features = false, version = '1.6.0' }
 sp-core = '3.0.0'
 sp-runtime = { default-features = false, version = '3.0.0' }
 pallet-balances = "3.0.0"
+
+serp-tes = { default-features = false, version = "0.5.0-dev", git = "https://github.com/Setheum-Labs/serp-tes", branch = "general-stable-currencies"}
+stp258-currencies = { default-features = false, version = "0.5.0-dev", git = 'https://github.com/Setheum-Labs/stp258' }
+stp258-tokens = { default-features = false, version = "0.5.0-dev", git = "https://github.com/Setheum-Labs/stp258-tokens"}
 
 [features]
 default = ['std']
