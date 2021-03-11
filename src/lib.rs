@@ -46,42 +46,33 @@ pub mod module {
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	pub(crate) type CurrencyIdOf<T> =
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::CurrencyId;
-	pub(crate) type AmountOf<T> =
-		<<T as Config>::Stp258Currency as Stp258CurrencyExtended<<T as frame_system::Config>::AccountId>>::Amount;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-		
-		type Balance: Parameter + codec::HasCompact + From<u32> + Into<Weight> + Default + MaybeSerializeDeserialize;
-		
-		type Stp258Currency: MergeAccount<Self::AccountId>
-			+ Stp258CurrencyExtended<Self::AccountId>
-			+ Stp258CurrencyLockable<Self::AccountId>
-			+ Stp258CurrencyReservable<Self::AccountId>;
 
-		type Stp258Native: Stp258AssetExtended<Self::AccountId, Balance = BalanceOf<Self>, Amount = AmountOf<Self>>
-			+ Stp258AssetLockable<Self::AccountId, Balance = BalanceOf<Self>>
-			+ Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
+		type NativeAsset: Stp258Asset<Self::AccountId>;
+		
+		type SettCurrency: Stp258Currency<Self::AccountId>;
 
 		type SettPayAccountId: AccountId;
+
 		type SettPaySerpAmount: Balance;
 
 		#[pallet::constant]
 		type GetStp258NativeId: Get<CurrencyIdOf<Self>>;
-		
+
+		/// The balance of an account.
+		#[pallet::constant]
+		type GetBaseUnit: Get<u64>;
 	}
 
 	#[pallet::error]
 	pub enum Error<T> {
 		/// Some wrong behavior
 		Wrong,
-		/// Something went very wrong and the price of the currency is zero.
-		ZeroPrice,
-		/// An arithmetic operation caused an overflow.
-		GenericOverflow,
-		/// An arithmetic operation caused an underflow.
-		GenericUnderflow,
+		/// While trying to expand the supply, it overflowed.
+		SupplyOverflow,
 	}
 
 	#[pallet::event]
@@ -234,6 +225,32 @@ impl<T: Config> Market<T::CurrencyId, T::Price> for Pallet<T> {
 			T::Stp258Currency::slash(currency_id, who, amount)
 		}
 	}
+
+	fn get_price(base_currency_id: CurrencyId, quote_currency_id: CurrencyId) -> Option<Price> {
+		let base_price = Source::get(&base_currency_id)?;
+		let quote_price = Source::get(&quote_currency_id)?;
+
+		base_price.checked_div(&quote_price)
+	}
+
+	/// Calculate the amount of currency price quoted as serping fee for Serpers, 
+	/// the Serp Quote is `((price/base_unit) - 1) * serp_quote_multiple)`,
+	/// the fraction is same as `(market_price + (mint_rate * 2))` - where `market-price = price/base_unit`, 
+	/// `mint_rate = serp_quote_multiple`, and with `(price/base_unit) - 1 = price_change`.
+	/// 
+	/// SerpMarket's SerpQuote from a fraction given as `numerator` and `denominator`.
+	fn calculate_serp_quote(numerator: u64, denominator: u64, serp_quote_multiple: u64) -> u64 {
+		type Fix = FixedU128<U64>;
+		let fraction = Fix::from_num(numerator) / Fix::from_num(denominator) - Fix::from_num(1);
+		fraction.saturating_mul_int(serp_quote_multiple as u128).to_num::<u64>()
+	}
+
+	/// Calculate the amount of currency price for SerpMarket's SerpQuote from a fraction given as `numerator` and `denominator`.
+	fn calculate_serp_price(numerator: u64, denominator: u64, serp_quote_multiple: u64) -> u64 {
+		type Fix = FixedU128<U64>;
+		let fraction = Fix::from_num(numerator) / Fix::from_num(denominator) - Fix::from_num(1);
+		fraction.saturating_mul_int(serp_quote_multiple as u128).to_num::<u64>()
+	}
 }
 
 /// A `PriceProvider` implementation based on price data from a `DataProvider`.
@@ -252,25 +269,4 @@ where
 		base_price.checked_div(&quote_price)
 	}
 
-	/// Provide relative `serping_price` for two currencies
-    /// with additional `serp_quote`.
-	fn get_serpup_price(base_currency_id: CurrencyId, quote_currency_id: CurrencyId) -> Option<Price> {
-		let base_price = Source::get(&base_currency_id)?; // base currency price compared to currency (native currency could work best)
-		let quote_price = Source::get(&quote_currency_id)?;
-        let market_price = base_price.checked_div(&quote_price); // market_price of the currency.
-        let mint_rate = Perbill::from_percent(); // supply change of the currency.
-        let serp_quote = market_price.checked_add(Perbill::from_percent(&mint_rate * 2)); // serping_price of the currency.
-        serp_quote.checked_add(Perbill::from_percent(&mint_rate * 2)); 
-	}
-
-	/// Provide relative `serping_price` for two currencies
-    /// with additional `serp_quote`.
-	fn get_serpdown_price(base_currency_id: CurrencyId, quote_currency_id: CurrencyId) -> Option<Price> {
-		let base_price = Source::get(&base_currency_id)?; // base currency price compared to currency (native currency could work best)
-		let quote_price = Source::get(&quote_currency_id)?;
-        let market_price = base_price.checked_div(&quote_price); // market_price of the currency.
-        let mint_rate = Perbill::from_percent(); // supply change of the currency.
-        let serp_quote = market_price.checked_add(Perbill::from_percent(&mint_rate * 2)); // serping_price of the currency.
-        serp_quote.checked_add(Perbill::from_percent(&mint_rate * 2)); 
-	}
 }

@@ -85,8 +85,11 @@ impl stp258_tokens::Config for Runtime {
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
 
+const STP258_BASE_UNIT: u64 = 1000;
+
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
+	pub const GetBaseUnit: u64 =  STP258_BASE_UNIT;
 }
 
 impl stp258_currencies::Config for Runtime {
@@ -94,6 +97,7 @@ impl stp258_currencies::Config for Runtime {
 	type Stp258Currency = Stp258Tokens;
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
+	type GetBaseUnit = GetBaseUnit;
 	type WeightInfo = ();
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
@@ -105,9 +109,6 @@ type Block = frame_system::mocking::MockBlock<Runtime>;
 impl serp_market::Config for Runtime {
 	type Event = Event;
 	type Market = Merket;
-	type MarketPriceProvider = MarketPriceProvider;
-	type Price = Price;
-	type CurrencyId = CurrencyId;
 }
 pub type MarketPriceProvider = SerpMarketPriceProvider<Runtime, u32>;
 
@@ -130,6 +131,7 @@ construct_runtime!(
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
 		SerpMarket: serp_market::{Module, Call, Event<T>},
+		SerpTes: serp_tes::{Module, Call, Event<T>},
 		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
