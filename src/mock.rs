@@ -1,106 +1,55 @@
-use crate::{Module, Trait};
-use frame_support::{impl_outer_origin, parameter_types, weights::Weight};
-use frame_system as system;
+//! Mocks for the SERP Market module.
+
+#![cfg(test)]
+
+use super::*;
+use frame_support::{construct_runtime, parameter_types};
+use stp258_traits::parameter_type_with_key;
 use sp_core::H256;
 use sp_runtime::{
-    testing::Header,
-    traits::{BlakeTwo256, IdentityLookup},
-    Perbill,
+	testing::Header,
+	traits::{AccountIdConversion, IdentityLookup},
+	AccountId32, ModuleId, FixedPointNumber, FixedU128
 };
 
-impl_outer_origin! {
-    pub enum Origin for Test {}
-}
+use crate as serp_market;
 
-const TEST_BASE_UNIT: u64 = 1000;
-static LAST_PRICE: AtomicU64 = AtomicU64::new(TEST_BASE_UNIT);
-pub struct RandomPrice;
-
-impl FetchPrice<SettCurrency> for RandomPrice {
-	fn fetch_price() -> SettCurrency {
-		let prev = LAST_PRICE.load(Ordering::SeqCst);
-		let random = thread_rng().gen_range(500, 1500);
-		let ratio: Ratio<u64> = Ratio::new(random, 1000);
-		let next = ratio
-			.checked_mul(&prev.into())
-			.map(|r| r.to_integer())
-			.unwrap_or(prev);
-		LAST_PRICE.store(next + 1, Ordering::SeqCst);
-		prev
-	}
-}
-
-// Configure a mock runtime to test the pallet.
-// For testing the pallet, we construct most of a mock runtime. This means
-// first constructing a configuration type (`Test`) which `impl`s each of the
-// configuration traits of modules we want to use.
-
-#[derive(Clone, Eq, PartialEq)]
-pub struct Test;
 parameter_types! {
-    pub const BlockHashCount: u64 = 250;
-    pub const MaximumBlockWeight: Weight = 1024;
-    pub const MaximumBlockLength: u32 = 2 * 1024;
-    pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
-    
-    // allow few bids
-	pub const MaximumBids: u64 = 10;
-	// adjust supply every second block
-	pub const ElastAdjustmentFrequency: u64 = 2;
-	pub const BaseUnit: u64 = TEST_BASE_UNIT;
-	pub const InitialSupply: u64 = 100 * BaseUnit::get();
-	pub const MinimumSupply: u64 = BaseUnit::get();
-	pub const MinimumDinarPrice: Perbill = Perbill::from_percent(10);
+	pub const BlockHashCount: u64 = 250;
 }
 
-type AccountId = u32;
-type BlockNumber = u64;
-
-impl system::Trait for Test {
-    type BaseCallFilter = ();
-    type Origin = Origin;
-    type Call = ();
-    type Index = u64;
-    type BlockNumber = u64;
-    type Hash = H256;
-    type Hashing = BlakeTwo256;
-    type AccountId = u64;
-    type Lookup = IdentityLookup<Self::AccountId>;
-    type Header = Header;
-    type Event = ();
-    type BlockHashCount = BlockHashCount;
-    type MaximumBlockWeight = MaximumBlockWeight;
-    type DbWeight = ();
-    type BlockExecutionWeight = ();
-    type ExtrinsicBaseWeight = ();
-    type MaximumExtrinsicWeight = MaximumBlockWeight;
-    type MaximumBlockLength = MaximumBlockLength;
-    type AvailableBlockRatio = AvailableBlockRatio;
-    type Version = ();
-    type PalletInfo = ();
-    type AccountData = ();
-    type OnNewAccount = ();
-    type OnKilledAccount = ();
-    type SystemWeightInfo = ();
+pub type AccountId = AccountId32;
+impl frame_system::Config for Runtime {
+	type Origin = Origin;
+	type Call = Call;
+	type Index = u64;
+	type BlockNumber = u64;
+	type Hash = H256;
+	type Hashing = ::sp_runtime::traits::BlakeTwo256;
+	type AccountId = AccountId;
+	type Lookup = IdentityLookup<Self::AccountId>;
+	type Header = Header;
+	type Event = Event;
+	type BlockHashCount = BlockHashCount;
+	type BlockWeights = ();
+	type BlockLength = ();
+	type Version = ();
+	type PalletInfo = PalletInfo;
+	type AccountData = pallet_balances::AccountData<u64>;
+	type OnNewAccount = ();
+	type OnKilledAccount = ();
+	type DbWeight = ();
+	type BaseCallFilter = ();
+	type SystemWeightInfo = ();
+	type SS58Prefix = ();
 }
-
-impl Trait for Test {
-    type Event = ();
-    type SettCurrencyPrice = RandomPrice;
-	type MaximumBids = MaximumBids;
-	type ElastAdjustmentFrequency = ElastAdjustmentFrequency;
-	type BaseUnit = BaseUnit;
-	type InitialSupply = InitialSupply;
-	type MinimumSupply = MinimumSupply;
-	type MinimumDinarPrice = MinimumDinarPrice;
-}
-
-pub type System = system::Module<Test>;
-pub type Stp258 = Module<Test>;
 
 type CurrencyId = u32;
 type Balance = u64;
-
+type Price = u64;
+type Quote = u64;
+type BaseUnit = u64;
+type SerpRatio = u64;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
@@ -109,13 +58,12 @@ parameter_types! {
 impl pallet_balances::Config for Runtime {
 	type Balance = Balance;
 	type DustRemoval = ();
-	type Event = TestEvent;
+	type Event = Event;
 	type ExistentialDeposit = ExistentialDeposit;
 	type AccountStore = frame_system::Module<Runtime>;
 	type MaxLocks = ();
 	type WeightInfo = ();
 }
-pub type PalletBalances = pallet_balances::Module<Runtime>;
 
 parameter_type_with_key! {
 	pub ExistentialDeposits: |currency_id: CurrencyId| -> Balance {
@@ -124,40 +72,70 @@ parameter_type_with_key! {
 }
 
 parameter_types! {
-	pub DustAccount: AccountId = ModuleId(*b"orml/dst").into_account();
+	pub DustAccount: AccountId = ModuleId(*b"dsss/dst").into_account();
 }
 
-impl orml_tokens::Config for Runtime {
-	type Event = TestEvent;
+impl stp258_tokens::Config for Runtime {
+	type Event = Event;
 	type Balance = Balance;
 	type Amount = i64;
 	type CurrencyId = CurrencyId;
 	type WeightInfo = ();
 	type ExistentialDeposits = ExistentialDeposits;
-	type OnDust = orml_tokens::TransferDust<Runtime, DustAccount>;
+	type OnDust = stp258_tokens::TransferDust<Runtime, DustAccount>;
 }
-pub type Tokens = orml_tokens::Module<Runtime>;
 
-pub const NATIVE_CURRENCY_ID: CurrencyId = CurrencyId::Token(TokenSymbol::DNAR);
-pub const SETT_USD_ID: CurrencyId = CurrencyId::Token(TokenSymbol::JUSD);
+const SERP_QUOTE_MULTIPLE: Quote = 2;
+const SERPER_RATIO: SerpRatio = 25;
+const SETT_PAY_RATIO: SerpRatio = 75;
 
 parameter_types! {
-	pub const GetNativeCurrencyId: CurrencyId = NATIVE_CURRENCY_ID;
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetSerperAcc: AccountId = SERPER_ACC;
+	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
+	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
+	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
+	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
 }
 
 impl Config for Runtime {
-	type Event = TestEvent;
-	type SettCurrency = Tokens;
-	type NativeCurrency = AdaptedBasicCurrency;
-	type GetNativeCurrencyId = GetNativeCurrencyId;
+	type Event = Event;
+	type GetNativeAssetId = GetNativeAssetId;
+	type SettCurrency = Stp258Currency;
+	type Price = Price;
+	type Quote = Quote;
+	type GetBaseUnit = GetBaseUnit;
+	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
+	type GetSettPayAcc = GetSettPayAcc;
+	type GetSerperAcc = GetSerperAcc;
+	type NativeAsset = AdaptedStp258Asset;
+}
+
+pub const STP258_NATIVE_ID: CurrencyId = 1;
+pub const STP258_TOKEN_ID: CurrencyId = 2;
+pub const STP258_JUSD_ID: CurrencyId = 3;
+pub const STP258_JCHF_ID: CurrencyId = 4;
+
+const STP258_BASE_UNIT: BaseUnit = 1000;
+
+parameter_types! {
+	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
+	pub const GetBaseUnit: BaseUnit =  STP258_BASE_UNIT;
+}
+
+impl stp258_currencies::Config for Runtime {
+	type Event = Event;
+	type Stp258Currency = Stp258Tokens;
+	type Stp258Native = AdaptedStp258Asset;
+	type GetStp258NativeId = GetStp258NativeId;
+	type GetBaseUnit = GetBaseUnit;
 	type WeightInfo = ();
 }
-pub type Stp258 = Module<Runtime>;
-pub type NativeCurrency = NativeCurrencyOf<Runtime>;
-pub type AdaptedBasicCurrency = BasicCurrencyAdapter<Runtime, PalletBalances, i64, u64>;
+pub type Stp258Native = Stp258NativeOf<Runtime>;
+pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u64>;
 
-pub type Block = sp_runtime::generic::Block<Header, UncheckedExtrinsic>;
-pub type UncheckedExtrinsic = sp_runtime::generic::UncheckedExtrinsic<u32, Call, u32, ()>;
+type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
+type Block = frame_system::mocking::MockBlock<Runtime>;
 
 construct_runtime!(
 	pub enum Runtime where
@@ -166,40 +144,16 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
-		Currencies: currencies::{Module, Call, Event<T>},
-		Tokens: orml_tokens::{Module, Storage, Event<T>, Config<T>},
+		SerpMarket: serp_market::{Module, Call, Event<T>},
+		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
+		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
-
 	}
 );
 
-pub const ALICE: AccountId = AccountId32::new([1u8; 32]);
-pub const BOB: AccountId = AccountId32::new([2u8; 32]);
-pub const EVA: AccountId = AccountId32::new([5u8; 32]);
-pub const DNAR: LockIdentifier = *b"DNAR       ";
-
-// Build genesis storage according to the mock runtime.
-pub fn new_test_ext() -> sp_io::TestExternalities {
-    system::GenesisConfig::default()
-        .build_storage::<Test>()
-        .unwrap()
-        .into()
-}
-
-// ------------------------------------------------------------
-// utils
-pub type DinarT = Dinar<AccountId>;
-// Implementation that we will instantiate.
-pub type Transient =
-	BoundedDeque<DinarT, <SettCurrency as Store>::DinarRange, <SettCurrency as Store>::Dinar, DinarIndex>;
-
-pub fn add_dinar(dinar: DinarT) {
-	let mut dinar = Transient::new();
-	dinar.push_back(dinar);
-	dinar.commit();
-}
-
-///-----------------------------------------------------------------------------------
+pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
+pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
+pub const ID_1: LockIdentifier = *b"1       ";
 
 pub struct ExtBuilder {
 	endowed_accounts: Vec<(AccountId, CurrencyId, Balance)>,
@@ -219,12 +173,16 @@ impl ExtBuilder {
 		self
 	}
 
-	pub fn one_hundred_for_alice_n_bob(self) -> Self {
+	pub fn five_hundred_thousand_for_sett_pay_n_serper(self) -> Self {
 		self.balances(vec![
-			(ALICE, NATIVE_CURRENCY_ID, 100),
-			(BOB, NATIVE_CURRENCY_ID, 100),
-			(ALICE, SETT_USD_ID, 100),
-			(BOB, SETT_USD_ID, 100),
+			(SETT_PAY_ACC, STP258_NATIVE_ID, 500_000),
+			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
+			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
 		])
 	}
 
@@ -238,18 +196,18 @@ impl ExtBuilder {
 				.endowed_accounts
 				.clone()
 				.into_iter()
-				.filter(|(_, currency_id, _)| *currency_id == NATIVE_CURRENCY_ID)
+				.filter(|(_, currency_id, _)| *currency_id == STP258_NATIVE_ID)
 				.map(|(account_id, _, initial_balance)| (account_id, initial_balance))
 				.collect::<Vec<_>>(),
 		}
 		.assimilate_storage(&mut t)
 		.unwrap();
 
-		orml_tokens::GenesisConfig::<Runtime> {
+		stp258_tokens::GenesisConfig::<Runtime> {
 			endowed_accounts: self
 				.endowed_accounts
 				.into_iter()
-				.filter(|(_, currency_id, _)| *currency_id != NATIVE_CURRENCY_ID)
+				.filter(|(_, currency_id, _)| *currency_id != STP258_NATIVE_ID)
 				.collect::<Vec<_>>(),
 		}
 		.assimilate_storage(&mut t)

@@ -1,335 +1,325 @@
 //! SerpMarket pallet.
 //!
 //!This is the Serp Market Pallet that trades with the SERP system 
-//!to make bids for Nativecurrency in this case called Dinar, and Sett-Currencies(Multiple stablecoins).
-//!Dutch Auction for Bids on stability of the Stablecoins.
+//!to make stability serping exchange for SettCurrency/Stp258Currency.
+//!Trading and price quotation is unique (Serp Quotation), the Setheum way.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::unused_unit)]
 
 use sp_std::prelude::*;
 
-use adapters::{BoundedPriorityQueue, BoundedDeque};
 use codec::{Decode, Encode};
 use core::cmp::{max, min, Ord, Ordering};
 use fixed::{types::extra::U64, FixedU128};
 use frame_support::pallet_prelude::*;
-use num_rational::Ratio;
-use stp258::{
-	account::MergeAccount,
-	arithmetic::{Signed, SimpleArithmetic},
-	BalanceStatus, BasicCurrency, BasicCurrencyExtended, BasicLockableCurrency, BasicReservableCurrency,
-	LockIdentifier, SettCurrency, ExtendedSettCurrency, 
-	LockableSettCurrency, R
-eservableSettCurrency,
-};use sp_runtime::{
-	traits::{CheckedMul, Zero},
-	PerThing, Perbill, RuntimeDebug,
+use stp258_traits::{
+	Stp258Currency,
+	Stp258CurrencyLockable, Stp258CurrencyReservable, 
+	Stp258Asset, Stp258AssetReservable,
 };
-use sp_std::collections::vec_
-deque::VecDeque;
-use frame_system::{self as system, ensure_signed, pallet_prelude::*};
+use sp_runtime::{
+	traits::{AtLeast32Bit, CheckedAdd, CheckedDiv, CheckedMul, MaybeSerializeDeserialize, Member, Zero}, 
+	DispatchResult, PerThing, Perbill, RuntimeDebug,
+};
 
-#[cfg(test)]
+use frame_system::{self as system, pallet_prelude::*};
+
+mod mock;
 mod tests;
 
-/// Expected price oracle interface. `fetch_price` must return the amount of SettCurrency exchanged for the tracked value.
-pub trait FetchPrice<CurrencyId> {
-	/// Fetch the current price.
-	fn fetch_price() -> CurrencyId;
-}
+pub use module::*;
 
-/// The pallet's configuration trait.
-pub trait Trait: system::Trait {
-	/// The overarching event type.
-	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+#[frame_support::pallet]
+pub mod module {
+	use super::*;
 
-	/// The amount of SettCurrency necessary to buy the tracked value. (e.g., 1_100 for 1$)
-	type SettCurrencyPrice: FetchPrice<SettCurrency>;
-	/// The maximum amount of bids allowed in the queue. Used to prevent the queue from growing forever.
-	type MaximumBids: Get<u64>;
-	/// The minimum percentage to pay for a dinar.
-	/// dinar price of 10%.
-	type MinimumDinarPrice: Get<Perbill>;
-}
-///
-/// A bid for a Dinar of the SettCurrencys at a certain price.
-///
-/// + `account` is the bidder.
-/// + `price` is a percentage of 1 settcurrency.
-/// + `quantity` is the amount of SettCurrency gained on payout of the corresponding Dinar.
-#[derive(Encode, Decode, Default, Clone, RuntimeDebug)]
-pub struct Bid<AccountId, currency_id: Self::CurrencyId,> {
-	account: AccountId,
-	price: Perbill,
-	quantity: SettCurrency::Amount,
-}
+	pub(crate) type BalanceOf<T> =
+		<<T as Config>::Stp258StableCurrency as SettCurrency<<T as frame_system::Config>::AccountId>>::Balance;
+	pub(crate) type CurrencyIdOf<T> =
+		<<T as Config>::Stp258StableCurrency as SettCurrency<<T as frame_system::Config>::AccountId>>::CurrencyId;
+	pub(crate) type AccountIdOf<T> =
+		<<T as Config>::Stp258Currency as SettCurrency<<T as frame_system::Config>::AccountId>>::AccountId;
 
-// Implement `Ord` for `Bid` to get the wanted sorting in the priority queue.
-// TODO: Could this create issues in testing? How to address?
-impl<AccountId> PartialEq for Bid<AccountId, currency_id: Self::CurrencyId,> {
-	fn eq(&self, other: &Self) -> bool { Cx																		
-		self.price == other.price
-	}
-}
-impl<AccountId> Eq for Bid<AccountId, currency_id: Self::CurrencyId,> {}
+	
 
-impl<AccountId> PartialOrd for Bid<AccountId, currency_id: Self::CurrencyId,> {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.cmp(other));
-	}
-}
-/// Sort `Bid`s by price.
-impl<AccountId> Ord for Bid<AccountId, currency_id: Self::CurrencyId,> {
-	fn cmp(&self, other: &Self) -> Ordering {
-		self.price.cmp(&other.price)
-	}
-}
+	#[pallet::config]
+	pub trait Config: frame_system::Config {
+		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-/// Error returned from `remove_settcurrency` if there is an over- or underflow.
-pub enum BidError {
-	/// `remove_settcurrency` overflowed.
-	Overflow,
-	/// `remove_settcurrency` underflowed.
-	Underflow,
-}
+		/// The balance type
+		type Balance: Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaybeSerializeDeserialize;
 
-impl<AccountId> Bid<AccountId, currency_id: Self::CurrencyId,> {
-	/// Create a new bid.
-	fn new(account: AccountId, price: Perbill, quantity: SettCurrency) -> Bid<AccountId, currency_id: Self::CurrencyId,> {
-		Bid {
-			account,
-			price,
-			quantity,
-			currency_id,
-		}
-	}
+		/// The price type
+		type Price = Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaybeSerializeDeserialize;
 
-	/// Return the amount of SettCurrency to be payed for this bid.
-	fn payment(&self) -> SettCurrency {
-		// This naive multiplication is fine because Perbill has an implementation tuned for balance types.
-		self.price * self.quantity
+		/// The quote type
+		type Quote = Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaybeSerializeDeserialize;
+
+		/// The Serp ratio type
+		type SerpRatio = Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaybeSerializeDeserialize;
+		
+		/// The base_unit type
+		type BaseUnit = Parameter + Member + AtLeast32BitUnsigned + Default + Copy + MaybeSerializeDeserialize;
+
+		/// The currency ID type
+		type CurrencyId: Parameter + Member + Copy + MaybeSerializeDeserialize + Ord;
+
+		/// The native asset (Dinar) type
+		type NativeAsset: NativeAsset<Self::AccountId>;
+		
+		/// The stable currency (SettCurrency) type
+		type SettCurrency: SettCurrency<Self::AccountId>;
+
+		/// The SettPay Account type
+		#[pallet::constant]
+		type GetSettPayAcc: Get<AccountIdOf<Self>>;
+
+		/// The Serpers Account type
+		#[pallet::constant]
+		type GetSerperAcc: Get<AccountIdOf<Self>>;
+
+		/// The Serp quote multiple type for qUOTE, quoting 
+		/// `(mintrate * SERP_QUOTE_MULTIPLE) = SerpQuotedPrice`.
+		#[pallet::constant]
+		type GetSerpQuoteMultiple: Get<Quote>;
+
+		/// The Serper ratio type getter
+		#[pallet::constant]
+		type GetSerperRatio: Get<SerpRatio>;
+
+		/// The SettPay ratio type getter
+		#[pallet::constant]
+		type GetSettPayRatio: Get<SerpRatio>;
+
+		/// The native asset (Dinar) Currency ID type
+		#[pallet::constant]
+		type GetNativeAssetId: Get<CurrencyIdOf<Self>>;
+
+		/// The base_unit getter
+		#[pallet::constant]
+		type GetBaseUnit: Get<BaseUnit>;
 	}
 
-	/// Remove `settcurrency` amount of SettCurrency from the bid, mirroring the changes in quantity
-	/// according to the price attached to the bid.
-	fn remove_settcurrency(&mut self, settcurrency: SettCurrency) -> Result<SettCurrency, BidError> {
-		// Inverse price is needed because `self.price` converts from amount of dinar payout settcurrency to payment settcurrency,
-		// but we need to convert the other way from payment settcurrency to dinar payout settcurrency.
-		// `self.price` equals the fraction of settcurrency I'm willing to pay now in exchange for a dinar.
-		// But we need to calculate the amount of dinar payouts corresponding to the settcurrency I'm willing to pay now
-		// which means we need to use the inverse of self.price!
-		let inverse_price: Ratio<u64> = Ratio::new(Perbill::ACCURACY.into(), self.price.deconstruct().into());
-
-		// Should never overflow, but better safe than sorry.
-		let removed_quantity = inverse_price
-			.checked_mul(&settcurrency.into())
-			.map(|r| r.to_integer())
-			.ok_or(BidError::Overflow)?;
-		self.quantity = self
-			.quantity
-			.checked_sub(removed_quantity)
-			.ok_or(BidError::Underflow)?;
-		Ok(removed_quantity)
-	}
-}
-
-decl_event!(
-	pub enum Event<T>
-	where
-		AccountId = <T as system::Trait>::AccountId, CurrencyId
-	{
-		NewBid(AccountId, Perbill, u32, CurrencyId),
-		/// A bid was refunded (repayed and removed from the queue).
-		RefundedBid(AccountId, u32, CurrencyId),
-		/// All bids at and above the given price were cancelled for the account.
-		CancelledBidsAbove(AccountId, Perbill, CurrencyId),
-		/// All bids at and below the given price were cancelled for the account.
-		CancelledBidsBelow(AccountId, Perbill, CurrencyId),
-		/// All bids were cancelled for the account.
-		CancelledBids(AccountId, CurrencyId),
-	}
-);
-
-decl_error! {
-	/// The possible errors returned by calls to this pallet's functions.
-	pub enum Error for Module<T: Trait> {
-		/// The account trying to use funds (e.g., for bidding) does not have enough balance.
-		InsufficientBalance,
-		/// While trying to increase the balance for an account, it overflowed.
-		BalanceOverflow,
+	#[pallet::error]
+	pub enum Error<T> {
+		/// Some wrong behavior
+		Wrong,
 		/// Something went very wrong and the price of the currency is zero.
 		ZeroPrice,
-		/// An arithmetic operation caused an overflow.
-		GenericOverflow,
-		/// An arithmetic operation caused an underflow.
-		GenericUnderflow,
-		/// The bidder tried to pay more than 100% for a dinar.
-		DinarPriceOver100Percent,
-		/// The bidding price is below `MinimumDinarPrice`.
-		DinarPriceTooLow,
-		/// The dinar being bid for is not big enough (in amount of SettCurrency).
-		DinarQuantityTooLow,
+		/// While trying to expand the supply, it overflowed.
+		SupplyOverflow,
+		/// While trying to contract the supply, it underflowed.
+		SupplyUnderflow,
 	}
-}
 
-impl<T: Trait> From<BidError> for Error<T> {
-	fn from(e: BidError) -> Self {
-		match e {
-			BidError::Overflow => Error::GenericOverflow,
-			BidError::Underflow => Error::GenericUnderflow,
-		}
+	#[pallet::event]
+	#[pallet::generate_deposit(fn deposit_event)]
+	pub enum Event<T: Config> {
+		/// Serp Expand Supply successful. [currency_id, who, amount]
+		SerpedUpSupply(CurrencyIdOf<T>, BalanceOf<T>),
+		/// Serp Contract Supply successful. [currency_id, who, amount]
+		SerpedDownSupply(CurrencyIdOf<T>, BalanceOf<T>),
+		/// The New Price of Currency. [currency_id, price]
+		NewPrice(CurrencyIdOf<T>, Price),
 	}
-}
 
-// This pallet's storage items.
-decl_storage! {
-	trait Store for Module<T: Trait> as SerpMarket {
-		/// The current bidding queue for dinar.
-		DinarBids get(fn dinar_bids): Vec<Bid<T::AccountId, currency_id: Self::CurrencyId,>>;
-	}
-}
+	/// The Price of a currency type.
+	#[pallet::storage]
+	#[pallet::getter(fn price)]
+	pub type Price<T: Config> = StorageMap<
+		_, 
+		Twox64Concat, 
+		T::CurrencyId, 
+		T::Price, 
+		T::CurrencyId, 
+		T::Price, 
+		ValueQuery,
+	>;
 
-decl_module! {
-   /// The pallet's dispatchable functions.
-	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
-		/// The minimum percentage to pay for a dinar.
-		const MinimumDinarPrice: Perbill = T::MinimumDinarPrice::get();
-		/// The maximum amount of bids in the bidding queue.
-		const MaximumBids: u32 = T::MaximumBids::get();
-		/// The minimum amount of SettCurrency that will be in circulation.
+	#[pallet::pallet]
+	pub struct Pallet<T>(PhantomData<T>);
 
-		fn deposit_event() = default;
+	#[pallet::call]
+	impl<T: Config> Pallet<T> {
 
-		/// Bid for `quantity` SettCurrency at a `price`.
-		///
-		/// + `price` is a fraction of the desired payout quantity (e.g., 80%).
-		/// + Expects a `quantity` of a least `BaseUnit`.
-		///
-		/// Example: `bid_for_dinar(origin, Perbill::from_percent(80), 5 * BaseUnit)` will bid
-		/// for a dinar with a payout of `5 * BaseUnit` SettCurrency for a price of
-		/// `0.8 * 5 * BaseUnit = 4 * BaseUnit` SettCurrency.
-		///
-		/// **Weight:**
-		/// - complexity: `O(B)`
-		///   - `B` being the number of bids in the bidding auction, limited to `MaximumBids`
-		/// - DB access:
-		///   - read and write bids from and to DB
-		///   - 1 DB storage map write to pay the bid
-		///   - 1 potential DB storage map write to refund evicted bid
-		pub fn bid_for_dinar(origin, price: Perbill, quantity: SettCurrency, currency_id: CurrencyId) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-
-			ensure!(price <= Perbill::from_percent(100), Error::<T>::DinarPriceOver100Percent);
-			ensure!(price > T::MinimumDinarPrice::get(), Error::<T>::DinarPriceTooLow);
-			ensure!(quantity >= T::BaseUnit::get(), Error::<T>::DinarQuantityTooLow);
-
-			let bid = Bid::new(who.clone(), price, quantity, currency_id);
-
-			// ↑ verify ↑
-			Self::remove_balance(&who, bid.payment())?;
-			// ↓ update ↓
-			Self::add_bid(bid);
-			Self::deposit_event(RawEvent::NewBid(who, price, quantity, currency_id));
-
+		/// A trait to provide relative `base_price` of `base_settcurrency_id`. 
+		/// The settcurrency `Price` is `base_price * base_unit`.
+		/// For example The `Price` of `JUSD` is `base_price: Price = $1.1 * base_unit: BaseUnit = 1_100`.
+		/// Therefore, the `Price` is got by checking how much `base_currency_peg` can buy `base_unit`, 
+		/// in our example, `1_100` in `base_currency_peg: USD` of `JUSD` can buy `base_unit` of `JUSD` in `USD`.
+		#[weight = 0]
+		fn get_stable_price(
+			base_settcurrency_id: CurrencyId, 
+			base_price: Price
+		) -> DispatchResult {
+			type Fix = FixedU128<U64>;
+			let base_unit = T::GetBaseUnit;
+			let amount_of_peg_to_buy_base_currency = Fix::from_num(base_price) * Fix::from_num(base_unit);
+			Price::put(amount_of_peg_to_buy_base_currency); /// the amount of peg that can buy base currency.
+			native::info!("The price of: {} is {} in its peg currency.", base_settcurrency_id, amount_of_peg_to_buy_base_currency);
+			Self::deposit_event(RawEvent::NewPrice(base_settcurrency_id, amount_of_peg_to_buy_base_currency));
 			Ok(())
 		}
- 
-		/// Cancel all bids at or below `price` of the sender and refund the SettCurrency.
-		///
-		/// **Weight:**
-		/// - complexity: `O(B)`
-		///   - `B` being the number of bids in the bidding auction, limited to `MaximumBids`
-		/// - DB access: read and write bids from and to DB
-		pub fn cancel_bids_at_or_below(origin, price: Perbill) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			// ↑ verify ↑
-			// ↓ update ↓
-			Self::cancel_bids(|bid| bid.account == who && bid.price <= price, currency_id);
-			Self::deposit_event(RawEvent::CancelledBidsBelow(who, price, currency_id));
-
+		
+		/// A trait to provide relative price for two currencies. 
+		/// For example, the relative price of `DNAR-JUSD` is `$1_000 / $1.1 = JUSD 1_100`,
+		/// meaning the price compared in `USD` as the peg of `JUSD` for example.. or,
+		/// the relative price of `DNAR-JUSD` is `DNAR 1 / JUSD 0.001 = JUSD 1_000`,
+		/// meaning `DNAR 1` can buy `JUSD 1_000` and therefore `1 DNAR = 0.001 JUSD`.
+		/// But tyhe former is preffered and thus used.
+		#[weight = 0]
+		fn get_relative_price(
+			base_currency_id: CurrencyId, 
+			base_price: Price, 
+			quote_currency_id: CurrencyId, 
+			quote_price: Price
+		) -> DispatchResult {
+			type Fix = FixedU128<U64>;
+			let amount_of_quote_to_buy_base = Fix::from_num(base_price) / Fix::from_num(quote_price);
+			let amount_of_base_to_buy_quote = Fix::from_num(quote_price) / Fix::from_num(base_price);
+			Price::put(amount_of_quote_to_buy_base); /// the amount of quote currency that can buy base currency.
+			native::info!(
+				"The price of: {} for: {}  is {}, therefore {} {} can buy {} {}", 
+				base_currency_id, 
+				quote_currency_id, 
+				amount_of_quote_to_buy_base, 
+				quote_currency_id, 
+				amount_of_quote_to_buy_base, 
+				base_currency_id, 
+				amount_of_base_to_buy_quote,
+			);
 			Ok(())
 		}
 
-		pub fn cancel_bids_at_or_above(origin, price: Perbill, CurrencyId) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			// ↑ verify ↑
-			// ↓ update ↓
-			Self::cancel_bids(|bid| bid.account == who && bid.price >= price, currency_id);
-			Self::deposit_event(RawEvent::CancelledBidsAbove(who, price, currency_id));
-
-			Ok(())
-		}
-
-		/// Cancel all bids belonging to the sender and refund the SettCurrency.
+		/// Quote the amount of currency price quoted as serping fee (serp quoting) for Serpers, 
+		/// the Serp Quote is `price/base_unit = fraction`, `fraction - 1 = fractioned`, `fractioned * serp_quote_multiple = quotation`,
+		/// `quotation + fraction = quoted` and `quoted` is the price the SERP will pay for serping in full including the serp_quote,
+		///  the fraction is same as `(market_price + (mint_rate * 2))` - where `market-price = price/base_unit`, 
+		/// `mint_rate = serp_quote_multiple`, and with `(price/base_unit) - 1 = price_change`.
 		///
-		/// **Weight:**
-		/// - complexity: `O(B)`
-		///   - `B` being the number of bids in the bidding auction, limited to `MaximumBids`
-		/// - DB access: read and write bids from and to DB
-		pub fn cancel_all_bids(origin) -> DispatchResult {
-			let who = ensure_signed(origin)?;
-			// ↑ verify ↑
-			// ↓ update ↓
-			Self::cancel_bids(|bid| bid.account == who, currency_id);
-			Self::deposit_event(RawEvent::CancelledBids(who, currency_id));
-
-			Ok(())
+		/// Calculate the amount of currency price for SerpMarket's SerpQuote from a fraction given as `numerator` and `denominator`.
+		#[weight = 0]
+		fn quote_serp_price(price: Price) -> Price {
+			type Fix = FixedU128<U64>;
+			let base_unit = T::GetBaseUnit;
+			/// The `serp_quote_multiple` was in place as "[`let serp_quote_multiple = 2;` // (mint_rate * 2) for Serp Quote]".
+			let serp_quote_multiple = T::GetSerpQuoteMultiple;
+			let fraction = Fix::from_num(price) / Fix::from_num(base_unit);
+			let fractioned = Fix::from_num(fraction) - Fix::from_num(1);
+			let quotation = fractioned.saturating_mul_int(serp_quote_multiple as u128).to_num::<u64>();
+			quoted = Fix::from_num(fraction) + Fix::from_num(quotation);
 		}
-	}
-}
 
-// ------------------------------------------------------------
-	// bids
+		/// Calculate the amount of supply change from a fraction given as `numerator` and `denominator`.
+		#[weight = 0]
+		fn calculate_supply_change(new_price: Price) -> Price {
+			type Fix = FixedU128<U64>;
+			let base_unit = T::GetBaseUnit; 
+			let supply = T::SettCurrency::total_issuance();
+			let fraction = Fix::from_num(new_price) / Fix::from_num(base_unit) - Fix::from_num(1);
+			fraction.saturating_mul_int(supply as u128).to_num::<u64>()
+		}
 
-	/// Construct a transient storage adapter for the bids priority queue.
-	fn bids_transient() -> BoundedPriorityQueue<Bid<T::AccountId>, currency_id: Self::CurrencyId, <Self as Store>::DinarBids, T::MaximumBids>
-	{
-		BoundedPriorityQueue::<Bid<T::AccountId>, currency_id: Self::CurrencyId, <Self as Store>::DinarBids, T::MaximumBids>::new()
-	}
-
-	/// Add a bid to the queue.
-	///
-	/// **Weight:**
-	/// - complexity: `O(B)` with `B` being the amount of bids
-	/// - DB access:
-	///   - read and write `B` bids
-	///   - potentially call 1 `refund_bid`
-	fn add_bid(bid: Bid<T::AccountId>, currency_id: Self::CurrencyId) {
-		Self::bids_transient()
-			.push(bid)
-			.map(|to_refund| Self::refund_bid(&to_refund));
-	}
-
-	/// Refund the SettCurrency payed for `bid` to the account that bid.
-	///
-	/// **Weight:**
-	/// - complexity: `O(1)`
-	/// - DB access: 1 write
-	fn refund_bid(bid: &Bid<T::AccountId>, currency_id: Self::CurrencyId) {
-		Self::add_balance(&bid.account, bid.payment());
-		Self::deposit_event(RawEvent::RefundedBid(bid.account.clone(), currency_id,  bid.payment()));
-	}
-
-	/// Cancel all bids where `cancel_for` returns true and refund the bidders.
-	///
-	/// **Weight:**
-	/// - complexity: `O(B)` with `B` being the amount of bids
-	/// - DB access:
-	///   - read and write `B` bids
-	///   - call `refund_bid` up to `B` times
-	fn cancel_bids<F>(cancel_for: F)
-	where
-		F: Fn(&Bid<T::AccountId>, currency_id: Self::CurrencyId) -> bool,
-	{
-		let mut bids = Self::dinar_bids();
-
-		bids.retain(|b| {
-			if cancel_for(b) {
-				Self::refund_bid(b);
-				return false;
+		/// Called when `expand_supply` is received from the SERP.
+		/// Implementation should `deposit` the `amount` to `serpup_to`, 
+		/// then `amount` will be slashed from `serpup_from` and update
+		/// `new_supply`.
+		#[weight = 0]
+		fn expand_supply(
+			currency_id: Self::CurrencyId, 
+			expand_by: Self::Balance,
+		) -> DispatchResult{
+			let supply = T::SettCurrency::total_issuance();
+			// Checking whether the supply will overflow.
+			supply
+				.checked_add(expand_by)
+				.ok_or(Error::<T>::SupplyOverflow)?;
+			// ↑ verify ↑
+			let native_asset_id = T::GetNativeAssetId;
+			let serper = &T::GetSerperAcc; 
+			let settpay = &T::GetSettPayAcc;
+			let base_currency_id = currency_id;
+			let quote_currency_id = native_asset_id;
+			let price = Self::get_relative_price(
+				native_asset_id,
+				base_price: Price, 
+				currency_id, 
+				quote_price: Price
+			);
+			let supply_change = Self::calculate_supply_change(price);
+			let serp_quoted_price = Self::quote_serp_price(price);
+			let settpay_ratio = &T::GetSettPayRatio; // 75% for SettPay. It was statically typed, now moved to runtime and can be set there.
+			let serper_ratio = &T::GetSerperRatio; // 25% for Serpers. It was statically typed, now moved to runtime and can be set there.
+			let supply_ratio = Fix::from_num(expand_by) / Fix::from_num(100); // Percentage, meaning 1%.
+			let settpay_distro = supply_ratio.saturating_mul_int(settpay_ratio as u128).to_num::<u64>(); // 75% distro for SettPay.
+			let serper_distro = supply_ratio.saturating_mul_int(serper_ratio as u128).to_num::<u64>(); // 25% distro for Serpers.
+			let pay_by_quoted = serper_distro.saturating_div_int(serp_quoted_price as u128).to_num::<u64>();
+			if currency_id == native_asset_id::get() {
+				debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
+				return Err(http::Error::Unknown);
+			} else {
+				T::SettCurrency::set_free_balance(currency_id, settpay, account.free + settpay_distro);
+				T::SettCurrency::set_reserved_balance(currency_id, serper, account.reserved + serper_distro);
+				T::NativeAsset::set_reserved_balance(serper, account.reserved - pay_by_quoted);
 			}
-			true
-		});
+			// safe to do this late because of the overflow test in the second line of the function
+			native::info!("expanded supply by serping settcurrency: {} with amount: {}", currency_id, expand_by);
+			T::SettCurrency::<TotalIssuance<T>>::mutate(currency_id, |v| *v += expand_by);
+			native::info!("burned native asset: {} by serping settcurrency: {} with amount: {} {}", native_asset_id, currency_id, native_asset_id, pay_by_quoted);
+			T::NativeAsset::<TotalIssuance<T>>::mutate(native_asset_id, |v| *v -= pay_by_quoted);
+			<Price>::put(new_price);
+			native::info!("The new price of: {} is : {}", currency_id, new_price);
+			Self::deposit_event(Event::SerpedUpSupply(currency_id, expand_by));
+			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
+			Ok(())
+		}
 
-		<DinarBids<T>>::put(bids);
-    }
+		/// Called when `contract_supply` is received from the SERP.
+		/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
+		/// of `amount` to `serpup_to`, then `amount` will be slashed from `serpup_from` 
+		/// and update `new_supply`.
+		#[weight = 0]
+		fn contract_supply(
+			currency_id: Self::CurrencyId,
+			contract_by: Self::Balance
+		) -> DispatchResult{
+			let supply = T::SettCurrency::total_issuance();
+			// Checking whether the supply will overflow.
+			supply
+				.checked_sub(contract_by)
+				.ok_or(Error::<T>::SupplyUnderflow)?;
+			// ↑ verify ↑
+			let serper = &T::GetSerperAcc;
+			let settpay: &T::GetSettPayAcc,
+			let base_currency_id = currency_id;
+			let quote_currency_id = native_asset_id;
+			let price = Self::get_relative_price(
+				currency_id, 
+				quote_price: Price
+				native_asset_id,
+				base_price: Price, 
+			);
+			let supply_change == contract_by;
+			let serp_quoted_price = Self::quote_serp_price(price);
+			let new_price == serp_quoted_price;
+			let pay_by_quoted = serp_quoted_price.saturating_mul_int(supply_change as u128).to_num::<u64>();
+			if currency_id == T::GetNativeAssetId::get() {
+				debug::warn!("Cannot expand supply for NativeCurrency: {}", currency_id);
+				return Err(http::Error::Unknown);
+			} else {
+				T::SettCurrency::set_reserved_balance(currency_id, serper, account.reserved - contract_by);
+				T::NativeAsset::set_reserved_balance(serper, account.reserved + pay_by_quoted);
+			}
+			// safe to do this late because of the overflow test in the second line of the function
+			native::info!("contracted supply by serping settcurrency: {} with amount: {}", currency_id, contract_by);
+			T::SettCurrency::<TotalIssuance<T>>::mutate(currency_id, |v| *v -= contract_by);
+			native::info!("mined native asset : {} by serping settcurrency: {} with amount: {} {}", native_asset_id, currency_id, native_asset_id, pay_by_quoted);
+			T::NativeAsset::<TotalIssuance<T>>::mutate(native_asset_id, |v| *v += pay_by_quoted);
+			<Price>::put(new_price);
+			native::info!("The price of: {} is: {} in its peg currency.", currency_id, new_price);
+			Self::deposit_event(Event::SerpedDownSupply(currency_id, who.clone(), contract_by));
+			Self::deposit_event(Event::NewPrice(currency_id, serp_quoted_price));
+			Ok(())
+		}
+	}
+}
