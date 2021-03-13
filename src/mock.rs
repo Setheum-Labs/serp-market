@@ -46,7 +46,10 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
-type Price = FixedU128;
+type Price = u64;
+type Quote = u64;
+type BaseUnit = u64;
+type SerpRatio = u64;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
@@ -82,14 +85,42 @@ impl stp258_tokens::Config for Runtime {
 	type OnDust = stp258_tokens::TransferDust<Runtime, DustAccount>;
 }
 
+const SERP_QUOTE_MULTIPLE: Quote = 2;
+const SERPER_RATIO: SerpRatio = 25;
+const SETT_PAY_RATIO: SerpRatio = 75;
+
+parameter_types! {
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetSerperAcc: AccountId = SERPER_ACC;
+	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
+	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
+	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
+	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
+}
+
+impl Config for Runtime {
+	type Event = Event;
+	type GetNativeAssetId = GetNativeAssetId;
+	type SettCurrency = Stp258Currency;
+	type Price = Price;
+	type Quote = Quote;
+	type GetBaseUnit = GetBaseUnit;
+	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
+	type GetSettPayAcc = GetSettPayAcc;
+	type GetSerperAcc = GetSerperAcc;
+	type NativeAsset = AdaptedStp258Asset;
+}
+
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
+pub const STP258_JUSD_ID: CurrencyId = 3;
+pub const STP258_JCHF_ID: CurrencyId = 4;
 
-const STP258_BASE_UNIT: u64 = 1000;
+const STP258_BASE_UNIT: BaseUnit = 1000;
 
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetBaseUnit: u64 =  STP258_BASE_UNIT;
+	pub const GetBaseUnit: BaseUnit =  STP258_BASE_UNIT;
 }
 
 impl stp258_currencies::Config for Runtime {
@@ -106,48 +137,6 @@ pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
 
-
-const ELAST_ADJUSTMENT_FREQUENCY: Blocknumber = 10;
-
-parameter_types! {
-	pub const ElastAdjustmentFrequency: Blocknumber =  ELAST_ADJUSTMENT_FREQUENCY;
-}
-
-impl SerpTes for Runtime {
-	type Event = Event;
-	type Currency = Stp258Currency;
-	type SerpMarket = SerpMarket;
-	type ElastAdjustmentFrequency = ElastAdjustmentFrequency;
-	type WeightInfo = ();
-}
-
-parameter_types! {
-	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
-	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
-}
-
-impl Config for Runtime {
-	type Event = Event;
-	type GetNativeAssetId: GetNativeAssetId;
-	type SettCurrency = Stp258Currency;
-	type Market = Market;
-	type GetSettPayAcc = GetSettPayAcc;
-	type NativeAsset: Stp258Asset<Self::AccountId>;
-}
-
-pub type MarketPriceProvider = SerpMarketPriceProvider<Runtime, u32>;
-
-impl SerpMarketProvider::Config for Runtime {
-	fn get(currency: &u32) -> Option<Price> {
-		match currency {
-			0 => Some(Price::from_inner(0)),
-			1 => Some(Price::from_inner(1)),
-			2 => Some(Price::from_inner(2)),
-			_ => None,
-		}
-	}
-}
-
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -156,16 +145,14 @@ construct_runtime!(
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
 		SerpMarket: serp_market::{Module, Call, Event<T>},
-		SerpTes: serp_tes::{Module, Call, Event<T>},
 		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}
 );
 
-pub const ALICE: AccountId = AccountId32::new([1u8; 32]);
-pub const BOB: AccountId = AccountId32::new([2u8; 32]);
-pub const SETT_PAY_ACC: AccountId = AccountId32::new([5u8; 32]);
+pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
+pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
 pub const ID_1: LockIdentifier = *b"1       ";
 
 pub struct ExtBuilder {
@@ -186,19 +173,16 @@ impl ExtBuilder {
 		self
 	}
 
-	pub fn one_hundred_for_alice_n_bob(self) -> Self {
+	pub fn five_hundred_thousand_for_sett_pay_n_serper(self) -> Self {
 		self.balances(vec![
-			(ALICE, STP258_NATIVE_ID, 100),
-			(BOB, STP258_NATIVE_ID, 100),
-			(ALICE, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
-			(BOB, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
-		])
-	}
-
-	pub fn one_hundred_for_sett_pay(self) -> Self {
-		self.balances(vec![
-			(SETT_PAY_ACC, STP258_NATIVE_ID, 100),
-			(SETT_PAY_ACC, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_NATIVE_ID, 500_000),
+			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
+			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
+			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
 		])
 	}
 
