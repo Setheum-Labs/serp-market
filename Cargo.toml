@@ -30,6 +30,8 @@ num-traits = { version = "0.2.14", default-features = false }
 fixed = { default-features = false, version = '1.6.0' }
 
 [dev-dependencies]
+log = "0.4.8"
+rand = "0.7.3"
 sp-core = '3.0.0'
 sp-runtime = { default-features = false, version = '3.0.0' }
 pallet-balances = "3.0.0"

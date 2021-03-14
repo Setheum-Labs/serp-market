@@ -46,7 +46,7 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
-type Price = u64;
+type PriceUnit = u64;
 type Quote = u64;
 type BaseUnit = u64;
 type SerpRatio = u64;
@@ -85,32 +85,6 @@ impl stp258_tokens::Config for Runtime {
 	type OnDust = stp258_tokens::TransferDust<Runtime, DustAccount>;
 }
 
-const SERP_QUOTE_MULTIPLE: Quote = 2;
-const SERPER_RATIO: SerpRatio = 25;
-const SETT_PAY_RATIO: SerpRatio = 75;
-
-parameter_types! {
-	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
-	pub const GetSerperAcc: AccountId = SERPER_ACC;
-	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
-	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
-	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
-}
-
-impl Config for Runtime {
-	type Event = Event;
-	type GetNativeAssetId = GetNativeAssetId;
-	type SettCurrency = Stp258Currency;
-	type Price = Price;
-	type Quote = Quote;
-	type GetBaseUnit = GetBaseUnit;
-	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
-	type GetSettPayAcc = GetSettPayAcc;
-	type GetSerperAcc = GetSerperAcc;
-	type NativeAsset = AdaptedStp258Asset;
-}
-
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
 pub const STP258_JUSD_ID: CurrencyId = 3;
@@ -133,6 +107,32 @@ impl stp258_currencies::Config for Runtime {
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
 pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u64>;
+
+const SERP_QUOTE_MULTIPLE: Quote = 2;
+const SERPER_RATIO: SerpRatio = 25;
+const SETT_PAY_RATIO: SerpRatio = 75;
+
+parameter_types! {
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetSerperAcc: AccountId = SERPER_ACC;
+	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
+	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
+	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
+	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
+}
+
+impl Config for Runtime {
+	type Event = Event;
+	type GetNativeAssetId = GetNativeAssetId;
+	type SettCurrency = Stp258Currency;
+	type PriceUnit = PriceUnit;
+	type Quote = Quote;
+	type GetBaseUnit = GetBaseUnit;
+	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
+	type GetSettPayAcc = GetSettPayAcc;
+	type GetSerperAcc = GetSerperAcc;
+	type NativeAsset = AdaptedStp258Asset;
+}
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
