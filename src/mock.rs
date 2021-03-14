@@ -1,4 +1,4 @@
-//! Mocks for the SERP Market module.
+//! Mocks for the Stp258 currencies module.
 
 #![cfg(test)]
 
@@ -9,10 +9,10 @@ use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{AccountIdConversion, IdentityLookup},
-	AccountId32, ModuleId, FixedPointNumber, FixedU128
+	AccountId32, ModuleId,
 };
 
-use crate as serp_market;
+use crate as stp258_currencies;
 
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
@@ -46,10 +46,6 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
-type PriceUnit = u64;
-type Quote = u64;
-type BaseUnit = u64;
-type SerpRatio = u64;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
@@ -87,19 +83,17 @@ impl stp258_tokens::Config for Runtime {
 
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
-pub const STP258_JUSD_ID: CurrencyId = 3;
-pub const STP258_JCHF_ID: CurrencyId = 4;
 
-const STP258_BASE_UNIT: BaseUnit = 1000;
+const STP258_BASE_UNIT: u64 = 1000;
 
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetBaseUnit: BaseUnit =  STP258_BASE_UNIT;
+	pub const GetBaseUnit: u64 =  STP258_BASE_UNIT;
 }
 
-impl stp258_currencies::Config for Runtime {
+impl Config for Runtime {
 	type Event = Event;
-	type Stp258Currency = Stp258Tokens;
+	type SettCurrency = Stp258Tokens;
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
 	type GetBaseUnit = GetBaseUnit;
@@ -107,32 +101,6 @@ impl stp258_currencies::Config for Runtime {
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
 pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u64>;
-
-const SERP_QUOTE_MULTIPLE: Quote = 2;
-const SERPER_RATIO: SerpRatio = 25;
-const SETT_PAY_RATIO: SerpRatio = 75;
-
-parameter_types! {
-	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
-	pub const GetSerperAcc: AccountId = SERPER_ACC;
-	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
-	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
-	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
-}
-
-impl Config for Runtime {
-	type Event = Event;
-	type GetNativeAssetId = GetNativeAssetId;
-	type SettCurrency = Stp258Currency;
-	type PriceUnit = PriceUnit;
-	type Quote = Quote;
-	type GetBaseUnit = GetBaseUnit;
-	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
-	type GetSettPayAcc = GetSettPayAcc;
-	type GetSerperAcc = GetSerperAcc;
-	type NativeAsset = AdaptedStp258Asset;
-}
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -144,15 +112,15 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
-		SerpMarket: serp_market::{Module, Call, Event<T>},
 		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}
 );
 
-pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
-pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
+pub const ALICE: AccountId = AccountId32::new([1u8; 32]);
+pub const BOB: AccountId = AccountId32::new([2u8; 32]);
+pub const EVA: AccountId = AccountId32::new([5u8; 32]);
 pub const ID_1: LockIdentifier = *b"1       ";
 
 pub struct ExtBuilder {
@@ -173,16 +141,12 @@ impl ExtBuilder {
 		self
 	}
 
-	pub fn five_hundred_thousand_for_sett_pay_n_serper(self) -> Self {
+	pub fn one_hundred_for_alice_n_bob(self) -> Self {
 		self.balances(vec![
-			(SETT_PAY_ACC, STP258_NATIVE_ID, 500_000),
-			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
-			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
+			(ALICE, STP258_NATIVE_ID, 100),
+			(BOB, STP258_NATIVE_ID, 100),
+			(ALICE, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
+			(BOB, STP258_TOKEN_ID, 100 * STP258_BASE_UNIT),
 		])
 	}
 

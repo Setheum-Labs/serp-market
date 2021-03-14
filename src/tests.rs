@@ -51,7 +51,7 @@ fn expand_supply_should_work() {
 		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
-			assert_ok!(Stp258Native::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
+			assert_ok!(PalletBalances::reserve(STP258_NATIVE_ID, &SERPER_ACC, 150_000));
 			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SERPER_ACC), 350_000);
 			assert_eq!(Stp258Native::free_balance(STP258_NATIVE_ID, &SETT_PAY_ACC), 500_000);
 			assert_eq!(Stp258Currencies::free_balance(STP258_TOKEN_ID, &SERPER_ACC), 500_000 * 1_000);
