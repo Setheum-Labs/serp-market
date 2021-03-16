@@ -1,7 +1,8 @@
-//! Mocks for the SERP Market module.
+//! Mocks for the Stp258 currencies module.
 
 #![cfg(test)]
 
+use std::convert::From;
 use super::*;
 use frame_support::{construct_runtime, parameter_types};
 use stp258_traits::parameter_type_with_key;
@@ -9,7 +10,7 @@ use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{AccountIdConversion, IdentityLookup},
-	AccountId32, ModuleId, FixedPointNumber, FixedU128
+	AccountId32, ModuleId,
 };
 
 use crate as serp_market;
@@ -46,10 +47,6 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
-type Price = u64;
-type Quote = u64;
-type BaseUnit = u64;
-type SerpRatio = u64;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
@@ -85,50 +82,39 @@ impl stp258_tokens::Config for Runtime {
 	type OnDust = stp258_tokens::TransferDust<Runtime, DustAccount>;
 }
 
-const SERP_QUOTE_MULTIPLE: Quote = 2;
-const SERPER_RATIO: SerpRatio = 25;
-const SETT_PAY_RATIO: SerpRatio = 75;
-
-parameter_types! {
-	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
-	pub const GetSerperAcc: AccountId = SERPER_ACC;
-	pub const GetNativeAssetId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetSerpQuoteMultiple: SerpRatio = SERP_QUOTE_MULTIPLE;
-	pub const GetSerperRatio: SerpRatio = SERPER_RATIO;
-	pub const GetSettPayRatio: SerpRatio = SETT_PAY_RATIO;
-}
-
-impl Config for Runtime {
-	type Event = Event;
-	type GetNativeAssetId = GetNativeAssetId;
-	type SettCurrency = Stp258Currency;
-	type Price = Price;
-	type Quote = Quote;
-	type GetBaseUnit = GetBaseUnit;
-	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
-	type GetSettPayAcc = GetSettPayAcc;
-	type GetSerperAcc = GetSerperAcc;
-	type NativeAsset = AdaptedStp258Asset;
-}
-
 pub const STP258_NATIVE_ID: CurrencyId = 1;
 pub const STP258_TOKEN_ID: CurrencyId = 2;
-pub const STP258_JUSD_ID: CurrencyId = 3;
-pub const STP258_JCHF_ID: CurrencyId = 4;
 
-const STP258_BASE_UNIT: BaseUnit = 1000;
+const STP258_BASE_UNIT: Balance = 1000;
+
+const SERP_QUOTE_MULTIPLE: Balance = 2;
+const SERPER_RATIO: Balance = 25;
+const SETT_PAY_RATIO: Balance = 75;
+const SINGLE_UNIT: Balance = 1;
 
 parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = STP258_NATIVE_ID;
-	pub const GetBaseUnit: BaseUnit =  STP258_BASE_UNIT;
+	pub const GetBaseUnit: Balance =  STP258_BASE_UNIT;
+	pub const GetSettPayAcc: AccountId = SETT_PAY_ACC;
+	pub const GetSerperAcc: AccountId = SERPER_ACC;
+	pub const GetSerpQuoteMultiple: Balance = SERP_QUOTE_MULTIPLE;
+	pub const GetSerperRatio: Balance = SERPER_RATIO;
+	pub const GetSettPayRatio: Balance = SETT_PAY_RATIO;
+	pub const GetSingleUnit: Balance = SINGLE_UNIT;
 }
 
-impl stp258_currencies::Config for Runtime {
+impl Config for Runtime {
 	type Event = Event;
 	type Stp258Currency = Stp258Tokens;
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
 	type GetBaseUnit = GetBaseUnit;
+	type GetSettPayAcc = GetSettPayAcc;
+	type GetSerperAcc = GetSerperAcc;
+	type GetSerperRatio = GetSerperRatio;
+	type GetSettPayRatio = GetSettPayRatio;
+	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
+	type GetSingleUnit = GetSingleUnit;
 	type WeightInfo = ();
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
@@ -145,7 +131,6 @@ construct_runtime!(
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
 		SerpMarket: serp_market::{Module, Call, Event<T>},
-		Stp258Currencies: stp258_currencies::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}
@@ -153,6 +138,7 @@ construct_runtime!(
 
 pub const SERPER_ACC: AccountId = AccountId32::new([1u8; 32]);
 pub const SETT_PAY_ACC: AccountId = AccountId32::new([2u8; 32]);
+
 pub const ID_1: LockIdentifier = *b"1       ";
 
 pub struct ExtBuilder {
@@ -179,10 +165,6 @@ impl ExtBuilder {
 			(SERPER_ACC, STP258_NATIVE_ID, 500_000),
 			(SETT_PAY_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
 			(SERPER_ACC, STP258_TOKEN_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SETT_PAY_ACC, STP258_JUSD_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
-			(SERPER_ACC, STP258_JCHF_ID, 500_000 * STP258_BASE_UNIT),
 		])
 	}
 
