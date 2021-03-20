@@ -21,7 +21,7 @@ fn expand_supply_should_work() {
 			let expand_by = 100_000;
 			let quote_price = 20;
 			let supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
+			// Both slash and deposit will check whether the supply will overflow or underflow. Therefore no need to check twice.
 			// ↑ verify ↑
 			let serper = &SERPER_ACC; 
 			let new_supply = supply + expand_by; 
@@ -65,7 +65,7 @@ fn contract_supply_should_work() {
 			let contract_by = 100_000;
 			let quote_price = 20;
 			let base_price = 900;
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
+			// Both slash and deposit will check whether the supply will overflow or underflow. Therefore no need to check twice.
 			// ↑ verify ↑
 			let serper = &SERPER_ACC; 
 			let _base_unit = 1_000;
