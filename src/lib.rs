@@ -284,7 +284,7 @@ impl<T: Config> SerpMarket<T::AccountId> for Pallet<T>{
 		let fractioned = new_base_price.saturating_sub(base_unit);
 		let quotation = fractioned.saturating_mul_int(serp_quote_multiple);
 		let serp_quoted_price = new_base_price.saturating_sub(quotation);;
-		let relative_price = quote_price as Self::Balance.saturating_div_int(serp_quoted_price as Self::Balance).to_num::<Self::Balance>();
+		let relative_price = quote_price.saturating_div_int(serp_quoted_price as Self::Balance).to_num::<Self::Balance>();
 		let pay_by_quoted = expand_by.saturating_div_int(relative_price);
 		Ok(())
 	}
@@ -311,7 +311,7 @@ impl<T: Config> SerpMarket<T::AccountId> for Pallet<T>{
 		let fractioned = base_unit.saturating_sub(new_base_price);
 		let quotation = fractioned.saturating_mul_int(serp_quote_multiple);
 		let serp_quoted_price = quotation.saturating_add(new_base_price);
-		let relative_price = serp_quoted_price as Self::Balance.saturating_div_int(quote_price as Self::Balance).to_num::<Self::Balance>();
+		let relative_price = serp_quoted_price.saturating_div_int(quote_price as Self::Balance).to_num::<Self::Balance>();
 		let defloated_by_quoted = relative_price.saturating_mul_int(contract_by);
 		let pay_by_quoted = defloated_by_quoted.saturating_div_int(base_unit);
 		Ok(())
