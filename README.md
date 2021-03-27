@@ -1,6 +1,6 @@
 # SERP - Market
 ## Setheum Elastic Reserve Protocol - Market
-SERP-Market Stablecoin SERP Module based on `Stp258Standard` built on top of `Stp258Tokens` and `Stp258Traits`.
+SERP-Market Stablecoin SERP Module based on `Stp258Standard` built on top of `Stp258Serp` and `SerpTraits`.
 
 ## Overview
 
@@ -15,6 +15,6 @@ It implements the following trait.
  - `SerpMarket` - Abstraction over a stablecoin stability system based on the DS3 (Dinar-Sett Stability System) on the SERP.
  The trait implements `expand_supply` and `contract_supply` SERP functions.
  
-The `SerpMarket` module depends on the `Stp258-traits` and `Stp258-currencies` modules for the currencies in to adjust the stablecoin supply.
+The `SerpMarket` module depends on the `Serp-traits` and `Stp258-currencies` modules for the currencies in to adjust the stablecoin supply.
 
-This module is based on the [STP-258 Standard](https://github.com/Setheum-Labs/stp258-standard) built on the [STP-258 Tokens](https://github.com/Setheum-Labs/stp258-tokens) implementing the [STP-258 Traits](https://github.com/Setheum-Labs/stp258-traits).
+This module is based on the [STP-258 Standard](https://github.com/Setheum-Labs/stp258-standard) built on the [STP-258 SERP](https://github.com/Setheum-Labs/stp258-serp) implementing the [SERP Traits](https://github.com/Setheum-Labs/serp-traits).
