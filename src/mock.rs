@@ -1,8 +1,7 @@
-//! Mocks for the Stp258 currencies module.
+//! Mocks for the SerpMarket module.
 
 #![cfg(test)]
 
-use std::convert::From;
 use super::*;
 use frame_support::{construct_runtime, parameter_types};
 use stp258_traits::parameter_type_with_key;
@@ -10,7 +9,7 @@ use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
 	traits::{AccountIdConversion, IdentityLookup},
-	AccountId32, ModuleId, Perbill
+	AccountId32, ModuleId, Perbill,
 };
 
 use crate as serp_market;
@@ -24,7 +23,7 @@ impl frame_system::Config for Runtime {
 	type Origin = Origin;
 	type Call = Call;
 	type Index = u64;
-	type BlockNumber = u64;
+	type BlockNumber = Blocknumber;
 	type Hash = H256;
 	type Hashing = ::sp_runtime::traits::BlakeTwo256;
 	type AccountId = AccountId;
@@ -47,19 +46,25 @@ impl frame_system::Config for Runtime {
 
 type CurrencyId = u32;
 type Balance = u64;
+type Blocknumber = u64;
 
 parameter_types! {
 	pub const ExistentialDeposit: u64 = 1;
 }
 
+impl pallet_balances::Config for Runtime {
+	type Balance = Balance;
+	type DustRemoval = ();
+	type Event = Event;
+	type ExistentialDeposit = ExistentialDeposit;
+	type AccountStore = frame_system::Module<Runtime>;
+	type MaxLocks = ();
+	type WeightInfo = ();
+}
+
 parameter_type_with_key! {
 	pub ExistentialDeposits: |currency_id: CurrencyId| -> Balance {
-		match currency_id {
-			&DNAR => 2,
-			&SETT => 1 * 10_000,
-			&JUSD => 1 * 1_000,
-			_ => 0,
-		}
+		Default::default()
 	};
 }
 
@@ -73,29 +78,28 @@ parameter_type_with_key! {
 	};
 }
 
-impl pallet_balances::Config for Runtime {
-	type Balance = Balance;
-	type DustRemoval = ();
-	type Event = Event;
-	type ExistentialDeposit = ExistentialDeposit;
-	type AccountStore = frame_system::Module<Runtime>;
-	type MaxLocks = ();
-	type WeightInfo = ();
-}
+const PERCENT: Balance = 100;
+const SERP_QUOTE_MULTIPLE: Balance = 2;
+const SINGLE_UNIT: Balance = 1;
+const SERPER_RATIO: Perbill = Perbill::from_percent(25);
+const SETT_PAY_RATIO: Perbill = Perbill::from_percent(75);
 
 parameter_types! {
 	pub DustAccount: AccountId = ModuleId(*b"dsss/dst").into_account();
 }
 
 parameter_types! {
-	pub const GetStp258NativeId: CurrencyId = DNAR;
 	pub const GetSerperAcc: AccountId = SERPER;
 	pub const GetSerpQuoteMultiple: Balance = SERP_QUOTE_MULTIPLE;
 	pub const GetSettPayAcc: AccountId = SETTPAY;
 	pub const GetSingleUnit: Balance = SINGLE_UNIT;
 	pub const GetSerperRatio: Perbill = SERPER_RATIO;
 	pub const GetSettPayRatio: Perbill = SETT_PAY_RATIO;
+	pub const GetSerpNativeId: CurrencyId = DNAR;
+	pub const GetPercent: Balance = PERCENT;
+	pub const AdjustmentFrequency: Blocknumber = ADJUSTMENT_FREQUENCY;
 }
+
 impl stp258_tokens::Config for Runtime {
 	type Event = Event;
 	type Balance = Balance;
@@ -104,6 +108,9 @@ impl stp258_tokens::Config for Runtime {
 	type WeightInfo = ();
 	type ExistentialDeposits = ExistentialDeposits;
 	type GetBaseUnit = GetBaseUnit;
+	type AdjustmentFrequency = AdjustmentFrequency;
+	type GetPercent = GetPercent;
+	type GetSerpNativeId = GetSerpNativeId;
 	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
 	type GetSerperAcc = GetSerperAcc;
 	type GetSettPayAcc = GetSettPayAcc;
@@ -114,30 +121,25 @@ impl stp258_tokens::Config for Runtime {
 }
 
 pub const DNAR: CurrencyId = 1;
-pub const JUSD: CurrencyId = 2;
-pub const SETT: CurrencyId = 3;
+pub const SETT: CurrencyId = 2;
+pub const JUSD: CurrencyId = 3;
 
-const SERP_QUOTE_MULTIPLE: Balance = 2;
-const SINGLE_UNIT: Balance = 1;
-const SERPER_RATIO: Perbill = Perbill::from_percent(25);
-const SETT_PAY_RATIO: Perbill = Perbill::from_percent(75);
+pub const ADJUSTMENT_FREQUENCY: Blocknumber = 10;
 
+parameter_types! {
+	pub const GetStp258NativeId: CurrencyId = DNAR;
+}
 
 impl Config for Runtime {
 	type Event = Event;
-	type Balance = Balance;
-	type CurrencyId = CurrencyId;
-	type SerpMarket = SerpMarket;
+	type Stp258Currency = Stp258Tokens;
+	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
-	type GetBaseUnit = GetBaseUnit;
-	type GetSettPayAcc = GetSettPayAcc;
-	type GetSerperAcc = GetSerperAcc;
-	type GetSerperRatio = GetSerperRatio;
-	type GetSettPayRatio = GetSettPayRatio;
-	type GetSerpQuoteMultiple = GetSerpQuoteMultiple;
-	type GetSingleUnit = GetSingleUnit;
 	type WeightInfo = ();
 }
+pub type Stp258Native = Stp258NativeOf<Runtime>;
+pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u64>;
+
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
 
@@ -154,12 +156,10 @@ construct_runtime!(
 	}
 );
 
-pub const SERPER: AccountId = AccountId32::new([1u8; 32]);
-pub const SETTPAY: AccountId = AccountId32::new([2u8; 32]);
 pub const ALICE: AccountId = AccountId32::new([0u8; 32]);
-pub const BOB: AccountId = AccountId32::new([3u8; 32]);
-
-pub const ID_1: LockIdentifier = *b"1       ";
+pub const BOB: AccountId = AccountId32::new([1u8; 32]);
+pub const SERPER: AccountId = AccountId32::new([3u8; 32]);
+pub const SETTPAY: AccountId = AccountId32::new([4u8; 32]);
 
 pub struct ExtBuilder {
 	endowed_accounts: Vec<(AccountId, CurrencyId, Balance)>,
