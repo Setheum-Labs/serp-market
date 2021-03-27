@@ -133,6 +133,7 @@ parameter_types! {
 impl Config for Runtime {
 	type Event = Event;
 	type Stp258Currency = Stp258Tokens;
+	type SerpMarket = Stp258Tokens;
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
 	type WeightInfo = ();
