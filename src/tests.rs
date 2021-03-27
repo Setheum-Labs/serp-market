@@ -1,4 +1,4 @@
-//! Unit tests for the SerpMarket module.
+//! Unit tests for the Market module.
 
 #![cfg(test)]
 
@@ -7,83 +7,239 @@ use frame_support::{assert_noop, assert_ok};
 use mock::{Event, *};
 use sp_runtime::traits::BadOrigin;
 
-
 #[test]
 fn expand_supply_should_work() {
 	ExtBuilder::default()
-		.five_hundred_thousand_for_sett_pay_n_serper()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
 		.build()
 		.execute_with(|| {
-			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
-			let prev_supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			let prev_reserved_balance = Stp258Tokens::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC);
-			let prev_free_balance = Stp258Tokens::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
-			let expand_by = 100_000;
-			let quote_price = 90;
-			let supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
-			// ↑ verify ↑
-			let serper = &SERPER_ACC; 
-			let new_supply = supply + expand_by; 
-			let base_price = new_supply / supply;
-			let _base_unit = 1_000;
-			let serp_quote_multiple = 2;
-			let fraction = base_price - 1;
-			let quotation = fraction * serp_quote_multiple;
-			let serp_quoted_price =  base_price - quotation;
-			let price = quote_price / serp_quoted_price;
-			let pay_by_quoted = expand_by / price;
-			assert_ok!(SerpMarket::expand_supply(Origin::root(), STP258_TOKEN_ID, expand_by, quote_price)); 
-			assert_eq!(
-				Stp258Tokens::total_issuance(STP258_TOKEN_ID), 
-				prev_supply + expand_by,
-			"supply should be increased by expand_by"
-			);
-			assert_eq!(
-				Stp258Tokens::free_balance(STP258_TOKEN_ID, serper),
-				prev_free_balance + expand_by,
-				"reserved balance should be decreased by contract_by"
-			);
-			assert_eq!(
-				Stp258Tokens::reserved_balance(STP258_NATIVE_ID, serper),
-				prev_reserved_balance - pay_by_quoted,
-				"reserved balance should be decreased by contract_by"
-			);
+			assert_eq!(Stp258Tokens::total_issuance(JUSD), 400 * 1_000);
+			assert_ok!(Stp258Tokens::expand_supply(DNAR, JUSD, 40 * 1_000, 4_000)); 
+			assert_eq!(Stp258Tokens::total_issuance(JUSD), 440 * 1_000);
 		});
 }
 
 #[test]
 fn contract_supply_should_work() {
 	ExtBuilder::default()
-		.five_hundred_thousand_for_sett_pay_n_serper()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
 		.build()
 		.execute_with(|| {
-			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
-			let prev_supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			let prev_reserved_balance = Stp258Tokens::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
-			let contract_by = 100_000;
-			let quote_price = 20;
-			let base_price = 900;
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
-			// ↑ verify ↑
-			let serper = &SERPER_ACC; 
-			let _base_unit = 1_000;
-			let serp_quote_multiple = 2;
-			let fraction = base_price - 1;
-			let quotation = fraction * serp_quote_multiple;
-			let serp_quoted_price =  base_price + quotation;
-			let price = serp_quoted_price / quote_price;
-			let pay_by_quoted = price * contract_by;
-			assert_ok!(SerpMarket::contract_supply(Origin::root(), STP258_TOKEN_ID, contract_by, quote_price, base_price)); 
-			assert_eq!(
-				Stp258Tokens::total_issuance(STP258_TOKEN_ID), 
-				prev_supply.checked_sub(contract_by),
-			"supply should be decreased by contract_by"
-			);
-			assert_eq!(
-				Stp258Tokens::reserved_balance(STP258_TOKEN_ID, serper),
-				prev_reserved_balance - contract_by,
-				"reserved balance should be decreased by contract_by"
-			)
+			assert_ok!(Market::update_balance(Origin::root(), SERPER, JUSD, 1_000 * 1_000));
+			assert_eq!(Market::free_balance(JUSD, &SERPER), 1_100 * 1_000);
+			assert_eq!(Stp258Tokens::total_issuance(JUSD), 1_400 * 1_000);
+			assert_ok!(Stp258Tokens::reserve(JUSD, &SERPER, 1_000 * 1_000));
+			assert_eq!(Stp258Tokens::reserved_balance(JUSD, &SERPER), 1_000 * 1_000);
+			assert_eq!(Stp258Tokens::total_issuance(JUSD), 1_400 * 1_000);
+			assert_ok!(Stp258Tokens::contract_supply(DNAR, JUSD, 40 * 1_000, 4_000)); 
+			assert_eq!(Stp258Tokens::reserved_balance(JUSD, &SERPER), 960 * 1_000);
+			assert_eq!(Stp258Tokens::total_issuance(JUSD), 1_360 * 1_000);
 		});
 }
+
+#[test]
+fn stp258_currency_reservable_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_eq!(Market::total_issuance(DNAR), 400);
+			assert_eq!(Market::total_issuance(SETT), 400 * 10_000);
+			assert_eq!(Market::free_balance(SETT, &ALICE), 100 * 10_000);
+			assert_eq!(Stp258Native::free_balance(&ALICE), 100);
+
+			assert_ok!(Market::reserve(SETT, &ALICE, 30 * 10_000));
+			assert_ok!(Market::reserve(DNAR, &ALICE, 40));
+			assert_eq!(Market::reserved_balance(SETT, &ALICE), 30 * 10_000);
+			assert_eq!(Market::reserved_balance(DNAR, &ALICE), 40);
+		});
+}
+
+#[test]
+fn stp258_native_reservable_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(Stp258Native::reserve(&ALICE, 50));
+			assert_eq!(Stp258Native::reserved_balance(&ALICE), 50);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_reservable() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(AdaptedStp258Asset::reserve(&ALICE, 50));
+			assert_eq!(AdaptedStp258Asset::reserved_balance(&ALICE), 50);
+		});
+}
+
+#[test]
+fn stp258_currency_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(Market::transfer(Some(ALICE).into(), BOB, SETT, 50 * 10_000));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 50 * 10_000);
+			assert_eq!(Market::free_balance(SETT, &BOB), 150 * 10_000);
+		});
+}
+
+#[test]
+fn stp258_native_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(Market::transfer_native_currency(Some(ALICE).into(), BOB, 50));
+			assert_eq!(Stp258Native::free_balance(&ALICE), 50);
+			assert_eq!(Stp258Native::free_balance(&BOB), 150);
+
+			assert_ok!(Stp258Native::transfer(&ALICE, &BOB, 10));
+			assert_eq!(Stp258Native::free_balance(&ALICE), 40);
+			assert_eq!(Stp258Native::free_balance(&BOB), 160);
+
+			assert_eq!(Market::slash(DNAR, &ALICE, 10), 0);
+			assert_eq!(Stp258Native::free_balance(&ALICE), 30);
+			assert_eq!(Stp258Native::total_issuance(), 390);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_transfer() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(AdaptedStp258Asset::transfer(&ALICE, &BOB, 50));
+			assert_eq!(PalletBalances::total_balance(&ALICE), 50 );
+			assert_eq!(PalletBalances::total_balance(&BOB), 150);
+			assert_ok!(AdaptedStp258Asset::transfer(&ALICE, &SERPER, 10));
+			assert_eq!(PalletBalances::total_balance(&ALICE), 40);
+			assert_eq!(PalletBalances::total_balance(&SERPER), 110);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_deposit() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(AdaptedStp258Asset::deposit(&SERPER, 50));
+			assert_eq!(PalletBalances::total_balance(&SERPER), 150);
+			assert_eq!(PalletBalances::total_issuance(), 450);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_withdraw() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(AdaptedStp258Asset::withdraw(&ALICE, 100));
+			assert_eq!(PalletBalances::total_balance(&ALICE), 0);
+			assert_eq!(PalletBalances::total_issuance(), 300);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_slash() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_eq!(AdaptedStp258Asset::slash(&ALICE, 101), 1);
+			assert_eq!(PalletBalances::total_balance(&ALICE), 0);
+			assert_eq!(PalletBalances::total_issuance(), 300);
+		});
+}
+
+#[test]
+fn stp258_asset_adapting_pallet_balances_update_balance() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(AdaptedStp258Asset::update_balance(&ALICE, -10));
+			assert_eq!(PalletBalances::total_balance(&ALICE), 90);
+			assert_eq!(PalletBalances::total_issuance(), 390);
+		});
+}
+
+#[test]
+fn update_balance_call_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			assert_ok!(Market::update_balance(
+				Origin::root(),
+				ALICE,
+				DNAR,
+				-10
+			));
+			assert_eq!(Stp258Native::free_balance(&ALICE), 90);
+			assert_eq!(Market::free_balance(SETT, &ALICE), 100 * 10_000);
+			assert_ok!(Market::update_balance(Origin::root(), ALICE, SETT, 10 * 10_000));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 110 * 10_000);
+		});
+}
+
+#[test]
+fn update_balance_call_fails_if_not_root_origin() {
+	ExtBuilder::default().build().execute_with(|| {
+		assert_noop!(
+			Market::update_balance(Some(ALICE).into(), ALICE, SETT, 100 * 10_000),
+			BadOrigin
+		);
+	});
+}
+
+#[test]
+fn call_event_should_work() {
+	ExtBuilder::default()
+		.one_hundred_for_alice_n_bob_n_serper_n_settpay()
+		.build()
+		.execute_with(|| {
+			System::set_block_number(1);
+
+			assert_ok!(Market::transfer(Some(ALICE).into(), BOB, SETT, 50 * 10_000));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 50 * 10_000);
+			assert_eq!(Market::free_balance(SETT, &BOB), 150 * 10_000);
+
+			let transferred_event = Event::market(crate::Event::Transferred(SETT, ALICE, BOB, 50 * 10_000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+
+			assert_ok!(<Market as Stp258Currency<AccountId>>::transfer(
+				SETT, &ALICE, &BOB, 10 * 10_000
+			));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 40 * 10_000);
+			assert_eq!(Market::free_balance(SETT, &BOB), 160 * 10_000);
+
+			let transferred_event = Event::market(crate::Event::Transferred(SETT, ALICE, BOB, 10 * 10_000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+
+			assert_ok!(<Market as Stp258Currency<AccountId>>::deposit(
+				SETT, &ALICE, 100 * 10_000
+			));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 140 * 10_000);
+
+			let transferred_event = Event::market(crate::Event::Deposited(SETT, ALICE, 100 * 10_000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+
+			assert_ok!(<Market as Stp258Currency<AccountId>>::withdraw(
+				SETT, &ALICE, 20 * 10_000
+			));
+			assert_eq!(Market::free_balance(SETT, &ALICE), 120 * 10_000);
+
+			let transferred_event = Event::market(crate::Event::Withdrawn(SETT, ALICE, 20 * 10_000));
+			assert!(System::events().iter().any(|record| record.event == transferred_event));
+		});
+}
+

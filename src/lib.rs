@@ -3,6 +3,7 @@
 
 use codec::Codec;
 use frame_support::{
+	debug::native,
 	pallet_prelude::*,
 	traits::{
 		Currency as SetheumCurrency, ExistenceRequirement, Get, 
@@ -14,12 +15,12 @@ use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
 use stp258_traits::{
 	account::MergeAccount,
 	arithmetic::{Signed, SimpleArithmetic},
-	BalanceStatus, Stp258Asset, Stp258AssetExtended, Stp258AssetLockable, Stp258AssetReservable,
+	BalanceStatus, SerpMarket, Stp258Asset, Stp258AssetExtended, Stp258AssetLockable, Stp258AssetReservable,
 	LockIdentifier, Stp258Currency, Stp258CurrencyExtended, Stp258CurrencyReservable, Stp258CurrencyLockable,
 };
 use orml_utilities::with_transaction_result;
 use sp_runtime::{
-	traits::{CheckedSub,  MaybeSerializeDeserialize, StaticLookup, Zero},
+	traits::{CheckedSub, MaybeSerializeDeserialize, StaticLookup, Zero},
 	DispatchError, DispatchResult,
 };
 use sp_std::{
@@ -53,9 +54,6 @@ pub mod module {
 	pub(crate) type AmountOf<T> =
 		<<T as Config>::Stp258Currency as Stp258CurrencyExtended<<T as frame_system::Config>::AccountId>>::Amount;
 
-	#[pallet::pallet]
-	pub struct Pallet<T>(PhantomData<T>);
-	
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
@@ -63,45 +61,15 @@ pub mod module {
 		type Stp258Currency: MergeAccount<Self::AccountId>
 			+ Stp258CurrencyExtended<Self::AccountId>
 			+ Stp258CurrencyLockable<Self::AccountId>
-			+ Stp258CurrencyReservable<Self::AccountId>;
+			+ Stp258CurrencyReservable<Self::AccountId>
+			+ SerpMarket<Self::AccountId>;
 
 		type Stp258Native: Stp258AssetExtended<Self::AccountId, Balance = BalanceOf<Self>, Amount = AmountOf<Self>>
 			+ Stp258AssetLockable<Self::AccountId, Balance = BalanceOf<Self>>
 			+ Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
 
-		
 		#[pallet::constant]
 		type GetStp258NativeId: Get<CurrencyIdOf<Self>>;
-
-
-		/// The balance of an account.
-		#[pallet::constant]
-		type GetBaseUnit: Get<BalanceOf<Self>>;
-
-		/// The single unit to avoid data loss with mized type arithmetic.
-		#[pallet::constant]
-		type GetSingleUnit: Get<BalanceOf<Self>>;
-
-		/// The Serper ratio type getter
-		#[pallet::constant]
-		type GetSerperRatio: Get<BalanceOf<Self>>;
-
-		/// The SettPay ratio type getter
-		#[pallet::constant]
-		type GetSettPayRatio: Get<BalanceOf<Self>>;	
-
-		/// The SettPay Account type
-		#[pallet::constant]
-		type GetSettPayAcc: Get<Self::AccountId>;
-
-		/// The Serpers Account type
-		#[pallet::constant]
-		type GetSerperAcc: Get<Self::AccountId>;
-
-		/// The Serp quote multiple type for qUOTE, quoting 
-		/// `(mintrate * SERP_QUOTE_MULTIPLE) = SerpQuotedPrice`.
-		#[pallet::constant]
-		type GetSerpQuoteMultiple: Get<BalanceOf<Self>>;
 
 		/// Weight information for extrinsics in this module.
 		type WeightInfo: WeightInfo;
@@ -113,8 +81,6 @@ pub mod module {
 		AmountIntoBalanceFailed,
 		/// Balance is too low.
 		BalanceTooLow,
-		// Cannott expand or contract Native Asset, only SettCurrency	Serping.
-		CannotSerpNativeAssetOnlySerpSettCurrency,
 	}
 
 	#[pallet::event]
@@ -128,19 +94,20 @@ pub mod module {
 		Deposited(CurrencyIdOf<T>, T::AccountId, BalanceOf<T>),
 		/// Withdraw success. [currency_id, who, amount]
 		Withdrawn(CurrencyIdOf<T>, T::AccountId, BalanceOf<T>),
-		/// Serp Expand Supply successful. [currency_id, who, amount]
+		// Supply Expansion Successful. \[currency_id, expand_by\]
 		SerpedUpSupply(CurrencyIdOf<T>, BalanceOf<T>),
-		/// Serp Contract Supply successful. [currency_id, who, amount]
+		/// Supply Contraction Successful. \[currency_id, contract_by\]
 		SerpedDownSupply(CurrencyIdOf<T>, BalanceOf<T>),
 	}
 
+	#[pallet::pallet]
+	pub struct Pallet<T>(PhantomData<T>);
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {}
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		
 		/// Transfer some balance to another account under `currency_id`.
 		///
 		/// The dispatch origin for this call must be `Signed` by the
@@ -191,76 +158,92 @@ pub mod module {
 			<Self as Stp258CurrencyExtended<T::AccountId>>::update_balance(currency_id, &dest, amount)?;
 			Ok(().into())
 		}
+	}
+}
 
-		/// Called when `expand_supply` is received from the SERP.
-		/// Implementation should `deposit` the `amount` to `serpup_to`, 
-		/// then `amount` will be slashed from `serper` and update
-		/// `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
-		/// the `native_currency` used to expand settcurrency supply.
-		#[pallet::weight(0)]
-		pub fn expand_supply(
-			origin: OriginFor<T>,
-			currency_id: CurrencyIdOf<T>, 
-			expand_by: BalanceOf<T>,
-			quote_price: BalanceOf<T>, // the price of Dinar, so as to expand settcurrency supply.
-		) -> DispatchResultWithPostInfo {
-			ensure_root(origin)?;
-			let supply = T::Stp258Currency::total_issuance(currency_id);
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
-			// ↑ verify ↑
-			let serper = &T::GetSerperAcc::get(); 
-			let new_supply = supply + expand_by; 
-			let base_price = new_supply / supply;
-			let _base_unit = T::GetBaseUnit::get();
-			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
-			let fraction = base_price - T::GetSingleUnit::get();
-			let quotation = fraction * serp_quote_multiple;
-			let serp_quoted_price =  base_price - quotation;
-			let price = quote_price / serp_quoted_price;
-			let pay_by_quoted = expand_by / price;
-				<Self as Stp258Currency<T::AccountId>>::deposit(currency_id, serper, expand_by);                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
-				T::Stp258Native::slash_reserved(serper, pay_by_quoted);
-			// both slash and deposit take care of total issuance, therefore nothing more to do.
-			Self::deposit_event(Event::SerpedUpSupply(currency_id, expand_by));
-			Ok(().into())
+impl<T: Config> SerpMarket<T::AccountId> for Pallet<T> {
+	/// Called when `expand_supply` is received from the SERP by the SerpTes 
+	/// through the `on_expand_supply` trigger.
+	/// Implementation should `deposit` the `amount` to `serpup_to`, 
+	/// then `amount` will be slashed from `serpup_from` and update
+	/// `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
+	/// the `native_currency` used to expand settcurrency supply.
+	/// `who` is the account to serp with.
+	/// `quote_price` here is sampled from mock and can be connected to an oracle.
+	fn expand_supply(
+		native_currency_id: Self::CurrencyId, 
+		stable_currency_id: Self::CurrencyId, 
+		expand_by: Self::Balance, 
+		quote_price: Self::Balance, 
+	) -> DispatchResult {
+		if expand_by.is_zero() {
+			return Ok(());
 		}
+		if native_currency_id == T::GetStp258NativeId::get() {
+			if stable_currency_id != T::GetStp258NativeId::get() {
+				T::Stp258Currency::expand_supply(
+					native_currency_id, 
+					stable_currency_id, 
+					expand_by as Self::Balance, 
+					quote_price,
+				)?;
+			} else {
+				native::info!("💸 This currency cannot be serped.");
+			}
+		} else {
+			native::info!("💸 The native serping currency is not recognised.");
+		}
+		Self::deposit_event(Event::SerpedUpSupply(stable_currency_id, expand_by));
+		Ok(())
+	}
 
-		/// Called when `contract_supply` is received from the SERP.
-		/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
-		/// of `amount` to `serper`, then `amount` will be slashed from `serper` 
-		/// and update `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
-		/// the `native_currency` used to contract settcurrency supply.
-		#[pallet::weight(0)]
-		pub fn contract_supply(
-			origin: OriginFor<T>,
-			currency_id: CurrencyIdOf<T>,
-			contract_by: BalanceOf<T>,
-			quote_price: BalanceOf<T>, // the price of Dinar, so as to contract settcurrency supply.
-			base_price: BalanceOf<T>, // the price of SettCurrency, so as to contract the supply.
-		) -> DispatchResultWithPostInfo {
-			ensure_root(origin)?;
-			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
-			// ↑ verify ↑
-			let serper = &T::GetSerperAcc::get();
-			let _base_unit = T::GetBaseUnit::get();
-			let serp_quote_multiple = T::GetSerpQuoteMultiple::get();
-			let fraction = base_price - T::GetSingleUnit::get();
-			let quotation = fraction * serp_quote_multiple;
-			let serp_quoted_price =  base_price + quotation;
-			let price = serp_quoted_price / quote_price;
-			let pay_by_quoted = price * contract_by;
-				<Self as Stp258CurrencyReservable<T::AccountId>>::slash_reserved(currency_id, serper, contract_by);
-				T::Stp258Native::deposit(serper, pay_by_quoted);
-			// both slash and deposit take care of total issuance, therefore nothing more to do.
-			Self::deposit_event(Event::SerpedDownSupply(currency_id, contract_by));
-			Ok(().into())
+	/// Called when `contract_supply` is received from the SERP by the SerpTes 
+	/// through the `on_contract_supply` trigger.
+	/// Implementation should `deposit` the `base_currency_id` (The Native Currency) 
+	/// of `amount` to `serpup_to`, then `amount` will be slashed from `serpup_from` 
+	/// and update `new_supply`. `quote_price` is the price ( relative to the settcurrency) of 
+	/// the `native_currency` used to contract settcurrency supply.
+	/// `who` is the account to serp with.
+	/// `quote_price` here is sampled from mock and can be connected to an oracle.
+	fn contract_supply(
+		native_currency_id: Self::CurrencyId, 
+		stable_currency_id: Self::CurrencyId, 
+		contract_by: Self::Balance, 
+		quote_price: Self::Balance, 
+	) -> DispatchResult {
+		if contract_by.is_zero() {
+			return Ok(());
 		}
+		if native_currency_id == T::GetStp258NativeId::get() {
+			if stable_currency_id != T::GetStp258NativeId::get() {
+				T::Stp258Currency::contract_supply(
+					native_currency_id, 
+					stable_currency_id, 
+					contract_by,
+					quote_price,
+				)?;
+			} else {
+				native::info!("💸 This currency cannot be serped.");
+			}
+		} else {
+			native::info!("💸 The native serping currency is not recognised.");
+		}
+		Self::deposit_event(Event::SerpedDownSupply(stable_currency_id, contract_by));
+		Ok(())
 	}
 }
 
 impl<T: Config> Stp258Currency<T::AccountId> for Pallet<T> {
 	type CurrencyId = CurrencyIdOf<T>;
 	type Balance = BalanceOf<T>;
+
+	fn base_unit(currency_id: Self::CurrencyId) -> Self::Balance {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::minimum_balance()
+		} else {
+			T::Stp258Currency::base_unit(currency_id)
+		}
+	}
 
 	fn minimum_balance(currency_id: Self::CurrencyId) -> Self::Balance {
 		if currency_id == T::GetStp258NativeId::get() {
