@@ -130,16 +130,23 @@ parameter_types! {
 	pub const GetStp258NativeId: CurrencyId = DNAR;
 }
 
-impl Config for Runtime {
+impl stp258_standard::Config for Runtime {
 	type Event = Event;
 	type Stp258Currency = Stp258Tokens;
-	type SerpMarket = Stp258Tokens;
 	type Stp258Native = AdaptedStp258Asset;
 	type GetStp258NativeId = GetStp258NativeId;
 	type WeightInfo = ();
 }
 pub type Stp258Native = Stp258NativeOf<Runtime>;
 pub type AdaptedStp258Asset = Stp258AssetAdapter<Runtime, PalletBalances, i64, u64>;
+
+impl Config for Runtime {
+	type Event = Event;
+	type Stp258Currency = Stp258Tokens;
+	type Stp258Native = AdaptedStp258Asset;
+	type GetStp258NativeId = GetStp258NativeId;
+	type WeightInfo = ();
+}
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
 type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -152,6 +159,7 @@ construct_runtime!(
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
 		SerpMarket: serp_market::{Module, Call, Event<T>},
+		Stp258Standard: stp258_standard::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
 	}

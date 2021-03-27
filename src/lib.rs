@@ -1,23 +1,32 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::unused_unit)]
 
+use codec::Codec;
 use frame_support::{
 	pallet_prelude::*,
 	traits::{
 		Currency as SetheumCurrency, ExistenceRequirement, Get, 
+		LockableCurrency as SetheumLockableCurrency,
 		ReservableCurrency as SetheumReservableCurrency, WithdrawReasons,
 	},
 };
 use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
 use stp258_traits::{
-	BalanceStatus, SerpMarket, Stp258Asset, Stp258AssetReservable,
-	Stp258Currency, Stp258CurrencyReservable,
+	account::MergeAccount,
+	arithmetic::{Signed, SimpleArithmetic},
+	BalanceStatus, Stp258Asset, Stp258AssetExtended, Stp258AssetLockable, Stp258AssetReservable,
+	LockIdentifier, Stp258Currency, Stp258CurrencyExtended, Stp258CurrencyReservable, Stp258CurrencyLockable,
 };
+use orml_utilities::with_transaction_result;
 use sp_runtime::{
-	traits::{CheckedSub, StaticLookup, Zero},
+	traits::{CheckedSub, MaybeSerializeDeserialize, StaticLookup, Zero},
 	DispatchError, DispatchResult,
 };
-use sp_std::{marker, result};
+use sp_std::{
+	convert::{TryFrom, TryInto},
+	fmt::Debug,
+	marker, result,
+};
 
 mod default_weight;
 mod mock;
@@ -41,14 +50,21 @@ pub mod module {
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	pub(crate) type CurrencyIdOf<T> =
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::CurrencyId;
+	pub(crate) type AmountOf<T> =
+		<<T as Config>::Stp258Currency as Stp258CurrencyExtended<<T as frame_system::Config>::AccountId>>::Amount;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-		type Stp258Currency: Stp258CurrencyReservable<Self::AccountId>;
+		type Stp258Currency: MergeAccount<Self::AccountId>
+			+ Stp258CurrencyExtended<Self::AccountId>
+			+ Stp258CurrencyLockable<Self::AccountId>
+			+ Stp258CurrencyReservable<Self::AccountId>;
 
-		type Stp258Native: Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
+		type Stp258Native: Stp258AssetExtended<Self::AccountId, Balance = BalanceOf<Self>, Amount = AmountOf<Self>>
+			+ Stp258AssetLockable<Self::AccountId, Balance = BalanceOf<Self>>
+			+ Stp258AssetReservable<Self::AccountId, Balance = BalanceOf<Self>>;
 
 		#[pallet::constant]
 		type GetStp258NativeId: Get<CurrencyIdOf<Self>>;
@@ -118,6 +134,22 @@ pub mod module {
 			T::Stp258Native::transfer(&from, &to, amount)?;
 
 			Self::deposit_event(Event::Transferred(T::GetStp258NativeId::get(), from, to, amount));
+			Ok(().into())
+		}
+
+		/// update amount of account `who` under `currency_id`.
+		///
+		/// The dispatch origin of this call must be _Root_.
+		#[pallet::weight(T::WeightInfo::update_balance_non_native_currency())]
+		pub fn update_balance(
+			origin: OriginFor<T>,
+			who: <T::Lookup as StaticLookup>::Source,
+			currency_id: CurrencyIdOf<T>,
+			amount: AmountOf<T>,
+		) -> DispatchResultWithPostInfo {
+			ensure_root(origin)?;
+			let dest = T::Lookup::lookup(who)?;
+			<Self as Stp258CurrencyExtended<T::AccountId>>::update_balance(currency_id, &dest, amount)?;
 			Ok(().into())
 		}
 	}
@@ -236,6 +268,58 @@ impl<T: Config> Stp258Currency<T::AccountId> for Pallet<T> {
 	}
 }
 
+impl<T: Config> Stp258CurrencyExtended<T::AccountId> for Pallet<T> {
+	type Amount = AmountOf<T>;
+
+	fn update_balance(currency_id: Self::CurrencyId, who: &T::AccountId, by_amount: Self::Amount) -> DispatchResult {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::update_balance(who, by_amount)?;
+		} else {
+			T::Stp258Currency::update_balance(currency_id, who, by_amount)?;
+		}
+		Self::deposit_event(Event::BalanceUpdated(currency_id, who.clone(), by_amount));
+		Ok(())
+	}
+}
+
+impl<T: Config> Stp258CurrencyLockable<T::AccountId> for Pallet<T> {
+	type Moment = T::BlockNumber;
+
+	fn set_lock(
+		lock_id: LockIdentifier,
+		currency_id: Self::CurrencyId,
+		who: &T::AccountId,
+		amount: Self::Balance,
+	) -> DispatchResult {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::set_lock(lock_id, who, amount)
+		} else {
+			T::Stp258Currency::set_lock(lock_id, currency_id, who, amount)
+		}
+	}
+
+	fn extend_lock(
+		lock_id: LockIdentifier,
+		currency_id: Self::CurrencyId,
+		who: &T::AccountId,
+		amount: Self::Balance,
+	) -> DispatchResult {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::extend_lock(lock_id, who, amount)
+		} else {
+			T::Stp258Currency::extend_lock(lock_id, currency_id, who, amount)
+		}
+	}
+
+	fn remove_lock(lock_id: LockIdentifier, currency_id: Self::CurrencyId, who: &T::AccountId) -> DispatchResult {
+		if currency_id == T::GetStp258NativeId::get() {
+			T::Stp258Native::remove_lock(lock_id, who)
+		} else {
+			T::Stp258Currency::remove_lock(lock_id, currency_id, who)
+		}
+	}
+}
+
 impl<T: Config> Stp258CurrencyReservable<T::AccountId> for Pallet<T> {
 	fn can_reserve(currency_id: Self::CurrencyId, who: &T::AccountId, value: Self::Balance) -> bool {
 		if currency_id == T::GetStp258NativeId::get() {
@@ -339,6 +423,38 @@ where
 
 	fn slash(who: &T::AccountId, amount: Self::Balance) -> Self::Balance {
 		<Pallet<T>>::slash(GetCurrencyId::get(), who, amount)
+	}
+}
+
+impl<T, GetCurrencyId> Stp258AssetExtended<T::AccountId> for Currency<T, GetCurrencyId>
+where
+	T: Config,
+	GetCurrencyId: Get<CurrencyIdOf<T>>,
+{
+	type Amount = AmountOf<T>;
+
+	fn update_balance(who: &T::AccountId, by_amount: Self::Amount) -> DispatchResult {
+		<Pallet<T> as Stp258CurrencyExtended<T::AccountId>>::update_balance(GetCurrencyId::get(), who, by_amount)
+	}
+}
+
+impl<T, GetCurrencyId> Stp258AssetLockable<T::AccountId> for Currency<T, GetCurrencyId>
+where
+	T: Config,
+	GetCurrencyId: Get<CurrencyIdOf<T>>,
+{
+	type Moment = T::BlockNumber;
+
+	fn set_lock(lock_id: LockIdentifier, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
+		<Pallet<T> as Stp258CurrencyLockable<T::AccountId>>::set_lock(lock_id, GetCurrencyId::get(), who, amount)
+	}
+
+	fn extend_lock(lock_id: LockIdentifier, who: &T::AccountId, amount: Self::Balance) -> DispatchResult {
+		<Pallet<T> as Stp258CurrencyLockable<T::AccountId>>::extend_lock(lock_id, GetCurrencyId::get(), who, amount)
+	}
+
+	fn remove_lock(lock_id: LockIdentifier, who: &T::AccountId) -> DispatchResult {
+		<Pallet<T> as Stp258CurrencyLockable<T::AccountId>>::remove_lock(lock_id, GetCurrencyId::get(), who)
 	}
 }
 
@@ -446,6 +562,62 @@ where
 	}
 }
 
+// Adapt `frame_support::traits::Currency`
+impl<T, AccountId, Currency, Amount, Moment> Stp258AssetExtended<AccountId>
+	for Stp258AssetAdapter<T, Currency, Amount, Moment>
+where
+	Amount: Signed
+		+ TryInto<PalletBalanceOf<AccountId, Currency>>
+		+ TryFrom<PalletBalanceOf<AccountId, Currency>>
+		+ SimpleArithmetic
+		+ Codec
+		+ Copy
+		+ MaybeSerializeDeserialize
+		+ Debug
+		+ Default,
+	Currency: SetheumCurrency<AccountId>,
+	T: Config,
+{
+	type Amount = Amount;
+
+	fn update_balance(who: &AccountId, by_amount: Self::Amount) -> DispatchResult {
+		let by_balance = by_amount
+			.abs()
+			.try_into()
+			.map_err(|_| Error::<T>::AmountIntoBalanceFailed)?;
+		if by_amount.is_positive() {
+			Self::deposit(who, by_balance)
+		} else {
+			Self::withdraw(who, by_balance)
+		}
+	}
+}
+
+// Adapt `frame_support::traits::LockableCurrency`
+impl<T, AccountId, Currency, Amount, Moment> Stp258AssetLockable<AccountId>
+	for Stp258AssetAdapter<T, Currency, Amount, Moment>
+where
+	Currency: SetheumLockableCurrency<AccountId>,
+	T: Config,
+{
+	type Moment = Moment;
+
+	fn set_lock(lock_id: LockIdentifier, who: &AccountId, amount: Self::Balance) -> DispatchResult {
+		Currency::set_lock(lock_id, who, amount, WithdrawReasons::all());
+		Ok(())
+	}
+
+	fn extend_lock(lock_id: LockIdentifier, who: &AccountId, amount: Self::Balance) -> DispatchResult {
+		Currency::extend_lock(lock_id, who, amount, WithdrawReasons::all());
+		Ok(())
+	}
+
+	fn remove_lock(lock_id: LockIdentifier, who: &AccountId) -> DispatchResult {
+		Currency::remove_lock(lock_id, who);
+		Ok(())
+	}
+}
+
 // Adapt `frame_support::traits::ReservableCurrency`
 impl<T, AccountId, Currency, Amount, Moment> Stp258AssetReservable<AccountId>
 	for Stp258AssetAdapter<T, Currency, Amount, Moment>
@@ -481,5 +653,20 @@ where
 		status: BalanceStatus,
 	) -> result::Result<Self::Balance, DispatchError> {
 		Currency::repatriate_reserved(slashed, beneficiary, value, status)
+	}
+}
+
+impl<T: Config> MergeAccount<T::AccountId> for Pallet<T> {
+	fn merge_account(source: &T::AccountId, dest: &T::AccountId) -> DispatchResult {
+		with_transaction_result(|| {
+			// transfer non-native free to dest
+			T::Stp258Currency::merge_account(source, dest)?;
+
+			// unreserve all reserved currency
+			T::Stp258Native::unreserve(source, T::Stp258Native::reserved_balance(source));
+
+			// transfer all free to dest
+			T::Stp258Native::transfer(source, dest, T::Stp258Native::free_balance(source))
+		})
 	}
 }
