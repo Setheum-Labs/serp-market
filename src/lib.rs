@@ -10,8 +10,8 @@ use frame_support::{
 };
 use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
 use stp258_traits::{
-	BalanceStatus, Stp258Asset, Stp258AssetExtended, Stp258AssetReservable,
-	Stp258Currency, Stp258CurrencyExtended, Stp258CurrencyReservable,
+	BalanceStatus, SerpMarket, Stp258Asset, Stp258AssetReservable,
+	Stp258Currency, Stp258CurrencyReservable,
 };
 use sp_runtime::{
 	traits::{CheckedSub, StaticLookup, Zero},
@@ -41,8 +41,6 @@ pub mod module {
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::Balance;
 	pub(crate) type CurrencyIdOf<T> =
 		<<T as Config>::Stp258Currency as Stp258Currency<<T as frame_system::Config>::AccountId>>::CurrencyId;
-	pub(crate) type AmountOf<T> =
-		<<T as Config>::Stp258Currency as Stp258CurrencyExtended<<T as frame_system::Config>::AccountId>>::Amount;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -120,22 +118,6 @@ pub mod module {
 			T::Stp258Native::transfer(&from, &to, amount)?;
 
 			Self::deposit_event(Event::Transferred(T::GetStp258NativeId::get(), from, to, amount));
-			Ok(().into())
-		}
-
-		/// update amount of account `who` under `currency_id`.
-		///
-		/// The dispatch origin of this call must be _Root_.
-		#[pallet::weight(T::WeightInfo::update_balance_non_native_currency())]
-		pub fn update_balance(
-			origin: OriginFor<T>,
-			who: <T::Lookup as StaticLookup>::Source,
-			currency_id: CurrencyIdOf<T>,
-			amount: AmountOf<T>,
-		) -> DispatchResultWithPostInfo {
-			ensure_root(origin)?;
-			let dest = T::Lookup::lookup(who)?;
-			<Self as Stp258CurrencyExtended<T::AccountId>>::update_balance(currency_id, &dest, amount)?;
 			Ok(().into())
 		}
 	}
