@@ -18,3 +18,30 @@ It implements the following trait.
 The `SerpMarket` module depends on the `Serp-traits` and `Stp258-currencies` modules for the currencies in to adjust the stablecoin supply.
 
 This module is based on the [STP-258 Standard](https://github.com/Setheum-Labs/stp258-standard) built on the [STP-258 SERP](https://github.com/Setheum-Labs/stp258-serp) implementing the [SERP Traits](https://github.com/Setheum-Labs/serp-traits).
+ 
+## Test & Build
+
+Run `cargo build` to build.
+Run `cargo test` to test.
+
+    build:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly-2021-03-05
+        target: wasm32-unknown-unknown
+        default: true
+    - name: Install Wasm toolchain
+      run: rustup target add wasm32-unknown-unknown
+    - name: Install clippy
+      run: rustup component add clippy
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
