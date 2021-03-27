@@ -12,7 +12,7 @@ use sp_runtime::{
 	AccountId32, ModuleId, Perbill,
 };
 
-use crate as serp_market;
+use crate as market;
 
 parameter_types! {
 	pub const BlockHashCount: u64 = 250;
@@ -158,7 +158,7 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Module, Call, Storage, Config, Event<T>},
-		SerpMarket: serp_market::{Module, Call, Event<T>},
+		Market: market::{Module, Call, Event<T>},
 		Stp258Standard: stp258_standard::{Module, Call, Event<T>},
 		Stp258Tokens: stp258_tokens::{Module, Storage, Event<T>, Config<T>},
 		PalletBalances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
