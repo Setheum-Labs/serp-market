@@ -14,13 +14,13 @@ fn expand_supply_should_work() {
 		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
-			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
-			let prev_supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			let prev_reserved_balance = Stp258Tokens::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC);
-			let prev_free_balance = Stp258Tokens::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
+			assert_eq!(Stp258Serp::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+			let prev_supply = Stp258Serp::total_issuance(STP258_TOKEN_ID);
+			let prev_reserved_balance = Stp258Serp::reserved_balance(STP258_NATIVE_ID, &SERPER_ACC);
+			let prev_free_balance = Stp258Serp::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
 			let expand_by = 100_000;
 			let quote_price = 90;
-			let supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
+			let supply = Stp258Serp::total_issuance(STP258_TOKEN_ID);
 			// Both slash and deposit will check whether the supply will overflow. Therefore no need to check twice.
 			// ↑ verify ↑
 			let serper = &SERPER_ACC; 
@@ -35,17 +35,17 @@ fn expand_supply_should_work() {
 			let pay_by_quoted = expand_by / price;
 			assert_ok!(SerpMarket::expand_supply(Origin::root(), STP258_TOKEN_ID, expand_by, quote_price)); 
 			assert_eq!(
-				Stp258Tokens::total_issuance(STP258_TOKEN_ID), 
+				Stp258Serp::total_issuance(STP258_TOKEN_ID), 
 				prev_supply + expand_by,
 			"supply should be increased by expand_by"
 			);
 			assert_eq!(
-				Stp258Tokens::free_balance(STP258_TOKEN_ID, serper),
+				Stp258Serp::free_balance(STP258_TOKEN_ID, serper),
 				prev_free_balance + expand_by,
 				"reserved balance should be decreased by contract_by"
 			);
 			assert_eq!(
-				Stp258Tokens::reserved_balance(STP258_NATIVE_ID, serper),
+				Stp258Serp::reserved_balance(STP258_NATIVE_ID, serper),
 				prev_reserved_balance - pay_by_quoted,
 				"reserved balance should be decreased by contract_by"
 			);
@@ -58,9 +58,9 @@ fn contract_supply_should_work() {
 		.five_hundred_thousand_for_sett_pay_n_serper()
 		.build()
 		.execute_with(|| {
-			assert_eq!(Stp258Tokens::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
-			let prev_supply = Stp258Tokens::total_issuance(STP258_TOKEN_ID);
-			let prev_reserved_balance = Stp258Tokens::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
+			assert_eq!(Stp258Serp::total_issuance(STP258_TOKEN_ID), 1_000_000 * 1_000);
+			let prev_supply = Stp258Serp::total_issuance(STP258_TOKEN_ID);
+			let prev_reserved_balance = Stp258Serp::reserved_balance(STP258_TOKEN_ID, &SERPER_ACC);
 			let contract_by = 100_000;
 			let quote_price = 20;
 			let base_price = 900;
@@ -76,12 +76,12 @@ fn contract_supply_should_work() {
 			let pay_by_quoted = price * contract_by;
 			assert_ok!(SerpMarket::contract_supply(Origin::root(), STP258_TOKEN_ID, contract_by, quote_price, base_price)); 
 			assert_eq!(
-				Stp258Tokens::total_issuance(STP258_TOKEN_ID), 
+				Stp258Serp::total_issuance(STP258_TOKEN_ID), 
 				prev_supply.checked_sub(contract_by),
 			"supply should be decreased by contract_by"
 			);
 			assert_eq!(
-				Stp258Tokens::reserved_balance(STP258_TOKEN_ID, serper),
+				Stp258Serp::reserved_balance(STP258_TOKEN_ID, serper),
 				prev_reserved_balance - contract_by,
 				"reserved balance should be decreased by contract_by"
 			)
