@@ -1,6 +1,6 @@
 # SERP - Market
 ## Setheum Elastic Reserve Protocol - Market
-SERP-Market Stablecoin SERP Module built on top of `Stp258Tokens` and `Stp258Traits`.
+SERP-Market Stablecoin SERP Module based on `Stp258Standard` built on top of `Stp258Tokens` and `Stp258Traits`.
 
 ## Overview
 
